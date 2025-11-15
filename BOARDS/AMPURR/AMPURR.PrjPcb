@@ -236,6 +236,69 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=
 
+[ProjectVariant1]
+UniqueID=0551BCFE-4A08-4DF9-8DC2-673D1E72C9C3
+Description=x
+AllowFabrication=0
+ParameterCount=0
+VariationCount=1
+Variation1=Designator=K1|UniqueId=\WFUIQWXM|Kind=2|AlternatePart==Value|AltLibLink_LibIdentifierKind=Library Full Path|AltLibLink_LibraryIdentifier=E:\SOLDER\Electronic\HE\K-LIB\Database.DbLib/Others$|AltLibLink_SymbolReference= |AltLibLink_DesignItemID=IM06TS|AltLibLink_UseLibraryName=True|AltLibLink_SourceLibraryName=Database.DbLib|AltLibLink_UseDBTableName=True|AltLibLink_DatabaseTableName=Others$|AltLibLink_VaultGUID= |AltLibLink_ItemGUID= |AltLibLink_RevisionGUID= |AltLibLink_Footprint=IM06|AltLibLink_IsSameFootprint=False
+ParamVariation1=ParameterName=Comment|VariantValue==Value
+ParamDesignator1=K1
+ParamVariation2=ParameterName=Arrow Part Number|VariantValue=HFD31/5
+ParamDesignator2=K1
+ParamVariation3=ParameterName=Arrow Price/Stock|VariantValue=https://www.arrow.com/en/products/hfd315/hongfa-europe-gmbh?region=europe
+ParamDesignator3=K1
+ParamVariation4=ParameterName=Component Kind|VariantValue=Standard
+ParamDesignator4=K1
+ParamVariation5=ParameterName=ComponentLink1Description|VariantValue=Datasheet
+ParamDesignator5=K1
+ParamVariation6=ParameterName=ComponentLink1URL|VariantValue=https://www.te.com/usa-en/product-2-1462037-7.datasheet.pdf
+ParamDesignator6=K1
+ParamVariation7=ParameterName=Database Table Name|VariantValue=Others$
+ParamDesignator7=K1
+ParamVariation8=ParameterName=Datasheet Link|VariantValue=https://source.hongfa.com//Api/DownloadPdf/152
+ParamDesignator8=K1
+ParamVariation9=ParameterName=Description|VariantValue=RELAY TELECOM DPDT 2A 12V coil current 11.6 mA
+ParamDesignator9=K1
+ParamVariation10=ParameterName=Footprint|VariantValue=IM06
+ParamDesignator10=K1
+ParamVariation11=ParameterName=Height|VariantValue=5.4mm
+ParamDesignator11=K1
+ParamVariation12=ParameterName=Ibis Model|VariantValue= 
+ParamDesignator12=K1
+ParamVariation13=ParameterName=Library Path 1|VariantValue=Others.SchLib
+ParamDesignator13=K1
+ParamVariation14=ParameterName=Library Reference|VariantValue=IM06TS
+ParamDesignator14=K1
+ParamVariation15=ParameterName=Manufacturer_Name|VariantValue=Hongfa
+ParamDesignator15=K1
+ParamVariation16=ParameterName=Manufacturer_Part_Number|VariantValue=HFD31/5
+ParamDesignator16=K1
+ParamVariation17=ParameterName=Mouser Part Number|VariantValue= 
+ParamDesignator17=K1
+ParamVariation18=ParameterName=Mouser Price/Stock|VariantValue= 
+ParamDesignator18=K1
+ParamVariation19=ParameterName=Name Component|VariantValue=Relay
+ParamDesignator19=K1
+ParamVariation20=ParameterName=Part Number|VariantValue=IM06TS
+ParamDesignator20=K1
+ParamVariation21=ParameterName=PCB3D|VariantValue= 
+ParamDesignator21=K1
+ParamVariation22=ParameterName=Pin Info|VariantValue= 
+ParamDesignator22=K1
+ParamVariation23=ParameterName=Power (V/A)|VariantValue=12V 11.6 mA
+ParamDesignator23=K1
+ParamVariation24=ParameterName=Signal Integrity|VariantValue= 
+ParamDesignator24=K1
+ParamVariation25=ParameterName=Simulation|VariantValue= 
+ParamDesignator25=K1
+ParamVariation26=ParameterName=Supplier 1|VariantValue=Kosmodrom
+ParamDesignator26=K1
+ParamVariation27=ParameterName=Value|VariantValue=IM06TS
+ParamDesignator27=K1
+ParamVariationCount=27
+
 [Parameter1]
 Name=__Project_Template_Version
 Value=1.0.3
