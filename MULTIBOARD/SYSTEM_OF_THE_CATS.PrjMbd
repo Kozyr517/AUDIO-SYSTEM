@@ -197,23 +197,6 @@ ProjectName=AMPURR.PrjPcb
 VaultURL=
 VaultName=
 
-[Document8]
-DocumentPath=..\BOARDS\LM3886\ROARCAT.PrjPcb
-AnnotationEnabled=1
-AnnotateStartValue=1
-AnnotationIndexControlEnabled=0
-AnnotateSuffix=
-AnnotateScope=All
-AnnotateOrder=-1
-DoLibraryUpdate=1
-DoDatabaseUpdate=1
-ClassGenCCAutoEnabled=1
-ClassGenCCAutoRoomEnabled=0
-ClassGenNCAutoScope=None
-DItemRevisionGUID=
-GenerateClassCluster=0
-DocumentUniqueId=
-
 [Parameter1]
 Name=_Project_Template_Version
 Value=1.0.1
