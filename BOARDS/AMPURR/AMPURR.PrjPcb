@@ -101,6 +101,23 @@ GenerateClassCluster=0
 DocumentUniqueId=ZFLMLOTV
 
 [Document4]
+DocumentPath=LINE_PREAMP.SchDoc
+AnnotationEnabled=1
+AnnotateStartValue=1
+AnnotationIndexControlEnabled=0
+AnnotateSuffix=
+AnnotateScope=All
+AnnotateOrder=6
+DoLibraryUpdate=1
+DoDatabaseUpdate=1
+ClassGenCCAutoEnabled=1
+ClassGenCCAutoRoomEnabled=0
+ClassGenNCAutoScope=None
+DItemRevisionGUID=
+GenerateClassCluster=0
+DocumentUniqueId=FHRUGTGH
+
+[Document5]
 DocumentPath=ADC_AK5572.SchDoc
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -117,7 +134,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=SENMYCTS
 
-[Document5]
+[Document6]
 DocumentPath=PHONO_PREAMP.SchDoc
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -134,7 +151,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=FODIBZUQ
 
-[Document6]
+[Document7]
 DocumentPath=POWER.SchDoc
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -151,7 +168,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=JNTOQPFM
 
-[Document7]
+[Document8]
 DocumentPath=AMPURR.PcbDoc
 AnnotationEnabled=1
 AnnotateStartValue=1
@@ -168,7 +185,7 @@ DItemRevisionGUID=
 GenerateClassCluster=0
 DocumentUniqueId=NUHLDVAB
 
-[Document8]
+[Document9]
 DocumentPath=..\..\..\K-LIB\Database.DbLib
 AnnotationEnabled=1
 AnnotateStartValue=1
