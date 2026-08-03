@@ -1,0 +1,146 @@
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "driver/gpio.h"
+#include "esp_sleep.h"
+#include "esp_log.h"
+#include "led_strip.h"
+
+static const char *TAG = "CATZILLA_BTN";
+
+// ================= ТОЧНИЙ КАРТА-МАПІНГ КНОПОК ТА СВІТЛОДІОДІВ =================
+#define PIN_BTN_1           GPIO_NUM_1   // Кнопка 1 -> Світлодіод 4 (індекс 3)
+#define PIN_BTN_2           GPIO_NUM_2   // Кнопка 2 -> Світлодіод 3 (індекс 2)
+#define PIN_BTN_3           GPIO_NUM_41  // Кнопка 3 -> Світлодіод 2 (індекс 1)
+#define PIN_BTN_4           GPIO_NUM_42  // Кнопка 4 -> Світлодіод 1 (індекс 0)
+
+#define PIN_ADDR_L_FRONT    GPIO_NUM_12  // Шина світлодіодів кнопок
+#define PIN_EN_ADDR_LED     GPIO_NUM_47  // Живлення LED
+#define LED_COUNT_FRONT     4            // Всього 4 світлодіоди
+
+// Лінії живлення
+#define PIN_VSYS_EN         GPIO_NUM_4
+#define PIN_BLE_EN          GPIO_NUM_5
+#define PIN_EN_POW_ADAU     GPIO_NUM_10
+#define PIN_EN_ALL_POWER    GPIO_NUM_21
+
+// ================= КОЛЬОРИ =================
+typedef struct { float r, g, b; } Color;
+
+// Холодний бірюзовий (базовий стан)
+static const Color COLOR_IDLE   = {0, 180, 220};  
+// Теплий яскраво-жовтий (активний стан при натисканні)
+static const Color COLOR_ACTIVE = {255, 180, 0}; 
+
+// Поточні та цільові кольори для кожного з 4 світлодіодів
+static Color current_colors[LED_COUNT_FRONT];
+static Color target_colors[LED_COUNT_FRONT];
+
+static led_strip_handle_t strip_front;
+
+// Структура для прив'язки кнопки до індексу світлодіода
+typedef struct {
+    gpio_num_t gpio;
+    int led_index;
+} ButtonMapping;
+
+// Точна відповідність за твоєю схемою:
+static const ButtonMapping btn_map[LED_COUNT_FRONT] = {
+    { PIN_BTN_1, 3 }, // GPIO 1  -> LED 4 (індекс 3)
+    { PIN_BTN_2, 2 }, // GPIO 2  -> LED 3 (індекс 2)
+    { PIN_BTN_3, 1 }, // GPIO 41 -> LED 2 (індекс 1)
+    { PIN_BTN_4, 0 }  // GPIO 42 -> LED 1 (індекс 0)
+};
+
+// ================= ФОНОВА ЗАДАЧА: ШВИДКИЙ FADING =================
+static void led_fader_task(void *pvParameters) {
+    const float step = 0.25f; // Дуже швидка зміна кольору під час дотику
+    
+    while (1) {
+        for (int i = 0; i < LED_COUNT_FRONT; i++) {
+            current_colors[i].r += (target_colors[i].r - current_colors[i].r) * step;
+            current_colors[i].g += (target_colors[i].g - current_colors[i].g) * step;
+            current_colors[i].b += (target_colors[i].b - current_colors[i].b) * step;
+
+            if (strip_front) {
+                led_strip_set_pixel(strip_front, i, 
+                                    (uint8_t)current_colors[i].r, 
+                                    (uint8_t)current_colors[i].g, 
+                                    (uint8_t)current_colors[i].b);
+            }
+        }
+        
+        if (strip_front) {
+            led_strip_refresh(strip_front);
+        }
+        
+        vTaskDelay(pdMS_TO_TICKS(15)); // ~66 FPS
+    }
+}
+
+static void set_power_rails(bool enable) {
+    uint32_t level = enable ? 1 : 0;
+    gpio_set_level(PIN_VSYS_EN, level);
+    gpio_set_level(PIN_BLE_EN, level);
+    gpio_set_level(PIN_EN_POW_ADAU, level);
+    gpio_set_level(PIN_EN_ALL_POWER, level);
+    gpio_set_level(PIN_EN_ADDR_LED, level);
+}
+
+void app_main(void) {
+    // 1. Ініціалізація виходів живлення
+    gpio_config_t pwr_conf = {
+        .pin_bit_mask = (1ULL << PIN_VSYS_EN) | (1ULL << PIN_BLE_EN) |
+                        (1ULL << PIN_EN_POW_ADAU) | (1ULL << PIN_EN_ALL_POWER) |
+                        (1ULL << PIN_EN_ADDR_LED),
+        .mode = GPIO_MODE_OUTPUT,
+    };
+    gpio_config(&pwr_conf);
+    set_power_rails(true);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    // 2. Ініціалізація сенсорів TTP223
+    gpio_config_t btn_conf = {
+        .pin_bit_mask = (1ULL << PIN_BTN_1) | (1ULL << PIN_BTN_2) |
+                        (1ULL << PIN_BTN_3) | (1ULL << PIN_BTN_4),
+        .mode = GPIO_MODE_INPUT,
+    };
+    gpio_config(&btn_conf);
+
+    // 3. Ініціалізація WS2812B
+    led_strip_config_t strip_config = {
+        .strip_gpio_num = PIN_ADDR_L_FRONT,
+        .max_leds = LED_COUNT_FRONT,
+    };
+    led_strip_rmt_config_t rmt_config = {
+        .resolution_hz = 10 * 1000 * 1000,
+    };
+    ESP_ERROR_CHECK(led_strip_new_rmt_device(&strip_config, &rmt_config, &strip_front));
+
+    // Початковий колір — усі бірюзові
+    for (int i = 0; i < LED_COUNT_FRONT; i++) {
+        current_colors[i] = COLOR_IDLE;
+        target_colors[i]  = COLOR_IDLE;
+    }
+
+    xTaskCreate(led_fader_task, "led_fader", 2048, NULL, 5, NULL);
+
+    ESP_LOGI(TAG, "Прив'язка кнопок до світлодіодів ініціалізована!");
+
+    while (1) {
+        // Проходимо по мапі кнопка-світлодіод
+        for (int i = 0; i < LED_COUNT_FRONT; i++) {
+            int led_idx = btn_map[i].led_index;
+            
+            if (gpio_get_level(btn_map[i].gpio) == 1) {
+                // Натиснута кнопка засвічує РІВНО СВІЙ світлодіод теплом жовтим
+                target_colors[led_idx] = COLOR_ACTIVE;
+            } else {
+                // Відпущена кнопка повертає бірюзовий колір
+                target_colors[led_idx] = COLOR_IDLE;
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+}
