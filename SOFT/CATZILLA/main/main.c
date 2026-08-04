@@ -8,8 +8,12 @@
 #include "esp_log.h"
 
 // Бібліотеки дисплея
+#include "Font8x12.h"
 #include "gp1247ai.h"
 #include "Font16x16.h"
+#include "Sinclair_S8x8.h"
+#include "TRONFont8x12.h"
+
 
 // Бібліотека з анімацією кота
 #include "cat_animation.h"
@@ -142,7 +146,7 @@ void app_main(void) {
 
     spi_device_interface_config_t dev_config = {
         .clock_source = SOC_MOD_CLK_XTAL,
-        .clock_speed_hz = 2000000,
+        .clock_speed_hz = 2500000,
         .mode = 0,
         .spics_io_num = PIN_NUM_LCD_CS,
         .queue_size = 300,
@@ -165,7 +169,64 @@ void app_main(void) {
 
     ESP_LOGI(TAG, "Готово! Перехід у фоновий режим.");
 
-    while (1) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+// Масиви пресетів (0 dB = 33)
+const uint8_t eq_pop[10]    = {29, 40, 44, 45, 41, 30, 28, 28, 29, 29};
+const uint8_t eq_rock[10]   = {45, 40, 23, 19, 26, 39, 47, 50, 50, 50};
+const uint8_t eq_jazz[10]   = {40, 38, 32, 33, 31, 35, 39, 41, 43, 44}; 
+const uint8_t eq_symph[10]  = {49, 49, 42, 42, 33, 24, 24, 24, 33, 33}; 
+const uint8_t eq_nature[10] = {33, 33, 33, 33, 33, 33, 33, 33, 33, 33}; 
+const uint8_t eq_bass[10]   = {48, 48, 48, 42, 35, 25, 18, 15, 14, 14}; 
+
+// Збираємо їх у масив для зручного перемикання в циклі
+const uint8_t* eq_presets[6] = {eq_pop, eq_rock, eq_jazz, eq_symph, eq_nature, eq_bass};
+const char* eq_names[6] = {"POP", "ROCK", "JAZZ", "SYMPH", "NATURE", "BASS"};
+
+uint8_t current_eq = 0; // Індекс поточного пресету
+
+
+
+while (1) {
+    LCD_clear(&lcd);
+
+    // 1. Малюємо зовнішню рамку
+    LCD_DrawRect(&lcd, 115, 2, 137, 60, 1);
+
+    // 2. Підпис назви пресету
+    LCD_print(&lcd, eq_names[current_eq], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // 3. Пунктирна лінія 0 dB (Y = 29)
+    for(int px = 117; px < 251; px += 4) {
+        LCD_DrawPixel(&lcd, px, 29, 1); 
     }
+
+    // 4. Малювання гладкої кривої АЧХ (з'єднання крапок лініями)
+    int prev_x = 0;
+    int prev_y = 0;
+
+    for(int i = 0; i < 10; i++) {
+        int x = 121 + i * 14; 
+        int y = 62 - eq_presets[current_eq][i]; 
+
+        // Малюємо крапку на частотному вузлі (3x3 пікселі для чіткості)
+        LCD_DrawRect(&lcd, x - 1, y - 1, 3, 3, 1);
+
+        // Якщо це не перша крапка — з'єднуємо її лінією з попередньою
+        if (i > 0) {
+            LCD_DrawLine(&lcd, prev_x, prev_y, x, y, 1);
+        }
+
+        // Запом'ятовуємо координати для наступного відрізка
+        prev_x = x;
+        prev_y = y;
+    }
+
+    LCD_Update(&lcd);
+    vTaskDelay(pdMS_TO_TICKS(5000)); // Зміна пресету кожні 5 секунд
+
+    current_eq++;
+    if (current_eq >= 6) {
+        current_eq = 0;
+    }
+}
+
 }
