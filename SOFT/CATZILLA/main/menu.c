@@ -1,10 +1,11 @@
 #include "menu.h"
 #include "Sinclair_S8x8.h"
 #include "driver/spi_master.h"
-#include "cat_animation.h"
+#include "animation.h"
 #include "Font16x16.h"
 #include "driver/gpio.h"
 #include <string.h>
+#include "rom/ets_sys.h" // Додаємо для точних затримок
 
 #define PIN_BTN_1           GPIO_NUM_1   // Кнопка 1 -> Світлодіод 4 (індекс 3)
 #define PIN_BTN_2           GPIO_NUM_2   // Кнопка 2 -> Світлодіод 3 (індекс 2)
@@ -14,12 +15,16 @@
 #define MAIN_MENU_NUM 0
 #define FILTERS_MENU_NUM 1
 #define EQ_MENU_NUM 2
+#define BALANCE_MENU_NUM 3
+#define PHONO_MENU_NUM 6
 
 // Тег один в кожному файлі, щоб розуміти в логах, з якого файлу логи йдуть
 static const char *TAG = "MENU";
 
+
 // Глобальні змінніі, для пізнішого визначення
-TypeDef_GP1247AI* lcd;
+TypeDef_GP1247AI lcd_instance;          // Створюємо реальний об'єкт у пам'яті
+TypeDef_GP1247AI* lcd = &lcd_instance;  // Даємо на нього вказівник
 spi_device_handle_t g_spi_handle;
 
 // Передача даних через SPI
@@ -49,7 +54,7 @@ void draw_cat_frame(uint16_t start_x, uint16_t start_y, const uint8_t *h_bitmap,
                 int page = y / 8;
                 int v_bit = 7 - (y % 8);  // Інверсія біта для виправлення дзеркалення
                 int v_byte = page * w + x;
-
+uint8_t new_menu_1_pointer = 0;
                 if (v_byte < sizeof(v_bitmap)) {
                     v_bitmap[v_byte] |= (1 << v_bit);
                 }
@@ -92,13 +97,19 @@ void draw_boot_animation() {
 
 // Функція-адаптер для затримки
 void delay_ms_wrapper(uint32_t ms) {
-    vTaskDelay(pdMS_TO_TICKS(ms));
-}
+    esp_rom_delay_us(ms * 1000); // Точна затримка в мікросекундах
 
+}
+// Змінні для відстеження утримання кнопки OK (довге натискання)
+static uint32_t press_start_tick = 0;
+static bool button_held = false;
 // Змінні, для зберігання даних - який пункт меню обрано
 uint8_t main_menu_pointer = 0;
 uint8_t filters_menu_pointer = 0;
 uint8_t eq_menu_pointer = 0;
+uint8_t balance_menu_pointer = 0;
+uint8_t phono_menu_pointer = 0;
+
 
 // Змінна, яка зберігає - яке зараз меню на дисплеї
 uint8_t menu_pointer = 0;  // 0 - main menu
@@ -107,10 +118,12 @@ uint8_t menu_pointer = 0;  // 0 - main menu
 // // //  Мають теж мати дублікати "old_" та порівнюватись за потреби
 
 // Дублікати всіх змінних, для відстеження змін в даних
-uint8_t old_menu_pointer = 0;
+uint8_t old_menu_pointer = 255;
 uint8_t old_main_menu_pointer = 0;
 uint8_t old_filters_menu_pointer = 0;
 uint8_t old_eq_menu_pointer = 0;
+uint8_t old_balance_menu_pointer = 0;
+uint8_t old_phono_menu_pointer = 0;
 
 // Масиви, для графіків АЧХ
 const uint8_t eq_pop[10]    = {29, 40, 44, 45, 41, 30, 28, 28, 29, 29};
@@ -122,6 +135,8 @@ const uint8_t eq_bass[10]   = {48, 48, 48, 42, 35, 25, 18, 15, 14, 14};
 
 const uint8_t* eq_presets[6] = {eq_pop, eq_rock, eq_jazz, eq_symph, eq_nature, eq_bass};
 const char* eq_names[6] = {"POP", "ROCK", "JAZZ", "SYMPH", "NATURE", "BASS"};
+const char* balance_names[3] = {"VOL", "L/R", "F/B"};
+const char* phono_names[3]  = {"NEEDLE", "TOTAL", "ERASE"};
 
 // Функція ініціалізації дисплею + анімацйія завантаження
 void display_init() {
@@ -156,21 +171,33 @@ void display_init() {
     vTaskDelay(pdMS_TO_TICKS(50));
     GP1247AI_Ini(lcd);
 
-    draw_boot_animation(lcd);
+draw_boot_animation(); // Ось так правильно
 }
 
 // Функції для виводу кожного виду меню
 void set_main_menu() {
     LCD_clear(lcd);
 
+        // Курсор головного меню (ваша зовнішня рамка)
     switch (main_menu_pointer) {
         case 0:
-        // LCD_DrawLine ???  Select this box
-        break;
+            LCD_DrawRect(lcd, 1, 1, 92, 20, 1); // Курсор для EQ PRESET
+            break;
         case 1:
-        //
-        break;
-        // case 2,3,4,5
+            LCD_DrawRect(lcd, 1, 22, 92, 20, 1); // Курсор для FILTERS
+            break;
+        case 2:
+            LCD_DrawRect(lcd, 1, 43, 92, 20, 1); // Курсор для VOLUME/BAL
+            break;
+        case 3:
+            LCD_DrawRect(lcd, 95, 1, 92, 20, 1); // Курсор для SPATIAL 3D
+            break;
+        case 4:
+            LCD_DrawRect(lcd, 95, 22, 92, 20, 1); // Курсор для NIGHT MOD
+            break;
+        case 5:
+            LCD_DrawRect(lcd, 95, 43, 92, 20, 1); // Курсор для PHONO MM
+            break;
     }
 
     // ЛІВИЙ СТОВПЧИК (X: 2, W: 90)
@@ -207,14 +234,27 @@ void set_main_menu() {
 void set_filters_menu() {
     LCD_clear(lcd);
 
+    // Курсор меню фільтрів (ваша зовнішня рамка)
     switch (filters_menu_pointer) {
         case 0:
-        // LCD_DrawLine ???  Select this box
-        break;
+            LCD_DrawRect(lcd, 1, 1, 68, 20, 1); // Курсор для SILK
+            break;
         case 1:
-        //
-        break;
-        // case 2,3,4,5
+            LCD_DrawRect(lcd, 1, 22, 68, 20, 1); // Курсор для PURRITY
+            break;
+        case 2:
+            LCD_DrawRect(lcd, 1, 43, 68, 20, 1); // Курсор для DRIVE
+            break;
+        case 3:
+            LCD_DrawRect(lcd, 69, 1, 68, 20, 1); // Курсор для ATMOS
+            break;
+        case 4:
+            LCD_DrawRect(lcd, 69, 22, 68, 20, 1); // Курсор для VILVET
+            break;
+        case 5:
+            LCD_DrawRect(lcd, 69, 43, 68, 20, 1); // Курсор для DIRECT
+            break;
+    
     }
 
     // ЛІВИЙ СТОВПЧИК (X: 2, W: 66)
@@ -279,14 +319,27 @@ void set_eq_menu() {
         prev_y = y;
     }
 
+    // Курсор меню еквалайзера (ваша зовнішня рамка)
     switch (eq_menu_pointer) {
         case 0:
-        // LCD_DrawLine ???  Select this box
-        break;
+            LCD_DrawRect(lcd, 1, 1, 52, 20, 1); // Курсор для POP
+            break;
         case 1:
-        //
-        break;
-        // case 2,3,4,5
+            LCD_DrawRect(lcd, 1, 22, 52, 20, 1); // Курсор для ROCK
+            break;
+        case 2:
+            LCD_DrawRect(lcd, 1, 43, 52, 20, 1); // Курсор для JAZZ
+            break;
+        case 3:
+            LCD_DrawRect(lcd, 55, 1, 58, 20, 1); // Курсор для SYMPH
+            break;
+        case 4:
+            LCD_DrawRect(lcd, 55, 22, 58, 20, 1); // Курсор для NATURE
+            break;
+        case 5:
+            LCD_DrawRect(lcd, 55, 43, 58, 20, 1); // Курсор для BASS
+            break;
+
     }
 
     // ЛІВИЙ СТОВПЧИК (X: 2, W: 50)
@@ -320,28 +373,111 @@ void set_eq_menu() {
     LCD_Update(lcd);
 }
 
+void set_balance_menu() {
+    LCD_clear(lcd);
+
+    // Вивід назви активного пункту балансу у правому верхньому кутку
+    LCD_print(lcd, balance_names[balance_menu_pointer], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // Курсор меню балансу (зовнішня рамка для активного пункту)
+    switch (balance_menu_pointer) {
+        case 0:
+            LCD_DrawRect(lcd, 1, 1, 112, 20, 1); // Курсор для MASTER VOLUME
+            break;
+        case 1:
+            LCD_DrawRect(lcd, 1, 22, 112, 20, 1); // Курсор для BALANCE LEFT/RIGHT
+            break;
+        case 2:
+            LCD_DrawRect(lcd, 1, 43, 112, 20, 1); // Курсор для BALANCE FRONT/BACK
+            break;
+    }
+
+    // БЛОК 1: "MASTER VOLUME"
+    LCD_DrawRect(lcd, 2, 2, 110, 18, 1);
+    LCD_print(lcd, "MASTER VOLUME", 11, 7, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // БЛОК 2: "BALANCE LEFT/RIGHT"
+    LCD_DrawRect(lcd, 2, 23, 110, 18, 1);
+    LCD_print(lcd, "BALANCE LEFT/RIGHT", 7, 28, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // БЛОК 3: "BALANCE FRONT/BACK"
+    LCD_DrawRect(lcd, 2, 44, 110, 18, 1);
+    LCD_print(lcd, "BALANCE FRONT/BACK", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // ПРАВИЙ БЛОК (X: 115, Y: 2, W: 137, H: 60)
+    LCD_DrawRect(lcd, 115, 2, 137, 60, 1);
+    LCD_Update(lcd);
+}
+void set_phono_menu() {
+    LCD_clear(lcd);
+
+    // Курсор активної кнопки (тільки 2 пункти вибору: 0 - Erase Needle, 1 - Erase Total)
+    switch (phono_menu_pointer) {
+        case 0:
+            LCD_DrawRect(lcd, 1, 16, 152, 15, 1); // Курсор навколо кнопки Erase Needle Time
+            break;
+        case 1:
+            LCD_DrawRect(lcd, 1, 46, 152, 15, 1); // Курсор навколо кнопки Erase Total Time
+            break;
+    }
+
+    // РЯДОК 1: Поточний час голки (Інформаційний блок, Y: 2..14)
+    LCD_DrawRect(lcd, 2, 2, 150, 13, 1);
+    LCD_print(lcd, "000.015h30m", 42, 4, (const uint8_t*)Sinclair_S8x8, 0); // Центровано по X та Y
+
+    // РЯДОК 2: Кнопка стирання голки (Активна кнопка 0, Y: 17..29)
+    LCD_DrawRect(lcd, 2, 17, 150, 13, 1);
+    LCD_print(lcd, "ERASE NEEDLE TIME", 10, 19, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // РЯДОК 3: Загальний час (Інформаційний блок, Y: 32..44)
+    LCD_DrawRect(lcd, 2, 32, 150, 13, 1);
+    LCD_print(lcd, "000.100h10m", 42, 34, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // РЯДОК 4: Кнопка стирання загального часу (Активна кнопка 1, Y: 47..59)
+    LCD_DrawRect(lcd, 2, 47, 150, 13, 1);
+    LCD_print(lcd, "ERASE TOTAL TIME", 14, 49, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // ПРАВИЙ БЛОК ДЛЯ АНІМАЦІЇ (Платівка)
+    LCD_DrawRect(lcd, 155, 2, 95, 60, 1);
+    // draw_cat_frame(165, 18, vinyl_anim[current_anim_frame], ANIM_W, ANIM_H);
+
+    LCD_Update(lcd);
+
+}
+
+
 // Функція, яка автоматично оновлює меню. Має викликатись в довічному циклі основної програми
 void menu_update() {
     if (  // Перевіряємо, чи щось змінилось. Якщо ні - дисплей не буде оновлюватись.
         menu_pointer != old_menu_pointer || main_menu_pointer != old_main_menu_pointer ||
-        filters_menu_pointer != old_filters_menu_pointer || eq_menu_pointer != old_eq_menu_pointer
+        filters_menu_pointer != old_filters_menu_pointer || eq_menu_pointer != old_eq_menu_pointer || 
+        balance_menu_pointer != old_balance_menu_pointer || phono_menu_pointer != old_phono_menu_pointer
+        
     ) {
         // Запам'ятовуємо все що змінилось щоб потім порівнювати вже з ним
         old_eq_menu_pointer = eq_menu_pointer;
         old_filters_menu_pointer = filters_menu_pointer;
         old_main_menu_pointer = main_menu_pointer;
         old_menu_pointer = menu_pointer;
+        old_balance_menu_pointer = balance_menu_pointer;
+        old_phono_menu_pointer = phono_menu_pointer;
         // Оновлюємо меню
         switch (menu_pointer) {
             case MAIN_MENU_NUM:
                 set_main_menu();
                 break;
             case FILTERS_MENU_NUM:
-                set_eq_menu();
-                break;
-            case EQ_MENU_NUM:
                 set_filters_menu();
                 break;
+            case EQ_MENU_NUM:
+                set_eq_menu();
+                break;
+            case BALANCE_MENU_NUM:
+                set_balance_menu();
+                break;
+            case PHONO_MENU_NUM:
+                set_phono_menu();
+                break;    
         }
     }
 }
@@ -359,6 +495,12 @@ void buttons_in_menu_process(uint32_t butt_num) {
                 case EQ_MENU_NUM:
                     if (eq_menu_pointer > 0) eq_menu_pointer -= 1;
                     break;
+                case BALANCE_MENU_NUM:
+                    if (balance_menu_pointer > 0) balance_menu_pointer -= 1;
+                    break;
+                case PHONO_MENU_NUM:
+                    if (phono_menu_pointer > 0) phono_menu_pointer -= 1;
+                    break;
             }
             break;
         case PIN_BTN_2:  // DOWN
@@ -372,17 +514,69 @@ void buttons_in_menu_process(uint32_t butt_num) {
                 case EQ_MENU_NUM:
                     if (eq_menu_pointer < 5) eq_menu_pointer += 1;
                     break;
+                case BALANCE_MENU_NUM:
+                    if (balance_menu_pointer < 5) balance_menu_pointer += 1;
+                    break;
+                case PHONO_MENU_NUM:
+                     if (phono_menu_pointer < 1) phono_menu_pointer += 1; // Максимум тепер 1 (було 5)
+                    break;
             }
             break;
         case PIN_BTN_3:  // OK
+            // Якщо ми в меню PHONO, реалізуємо справжнє довге затискання
+            if (menu_pointer == PHONO_MENU_NUM) {
+                ESP_LOGI(TAG, "Кнопку затиснуто, утримуйте 3 секунди...");
+                
+                bool held_successfully = true;
+                
+                // Перевіряємо стан кнопки кожні 50 мс протягом 3 секунд ( у сумі 60 ітерацій * 50мс = 3000мс)
+                for (int i = 0; i < 60; i++) {
+                    vTaskDelay(pdMS_TO_TICKS(50));
+                    
+                    // Якщо рівень змінився (користувач відпустив кнопку — перевірте, чи у вас активний рівень 0 чи 1)
+                    // Оскільки налаштування INTR_POSEDGE спрацьовує на наростаючий фронт, натискання дає рівень 1. 
+                    // Якщо кнопка відпущена і стала 0, перериваємо цикл:
+                    if (gpio_get_level(PIN_BTN_3) == 0) { 
+                        held_successfully = false;
+                        break;
+                    }
+                }
+                
+                if (held_successfully) {
+                    if (phono_menu_pointer == 0) {
+                        ESP_LOGI(TAG, "Скидання часу голки (Needle Time) виконано успішно!");
+                        // Тут ваша логіка обнулення needle_time
+                    } else if (phono_menu_pointer == 1) {
+                        ESP_LOGI(TAG, "Скидання загального часу (Total Time) виконано успішно!");
+                        // Тут ваша логіка обнулення total_time
+                    }
+                } else {
+                    ESP_LOGI(TAG, "Кнопку відпущено занадто рано. Дія скасована.");
+                }
+                break;
+            }
+
+            // Стандартна логіка для всіх інших меню (зберігається без змін)
             switch (menu_pointer) {
                 case MAIN_MENU_NUM:
                     switch (main_menu_pointer) {
-                        case 0:
-                            menu_pointer = 1;
+                        case 0: // EQ PRESET
+                            menu_pointer = EQ_MENU_NUM;
                             break;
-                        case 1:
-                            menu_pointer = 2;
+                        case 1: // FILTERS
+                            menu_pointer = FILTERS_MENU_NUM;
+                            break;
+                        case 2: // VOLUME/BAL
+                            menu_pointer = BALANCE_MENU_NUM;
+                            break;
+                        case 3: // SPATIAL 3D
+                            ESP_LOGW(TAG, "FUTURE UPDATE: SPATIAL 3D");
+                            break;
+                        case 4: // NIGHT MOD
+                            ESP_LOGW(TAG, "FUTURE UPDATE: NIGHT MOD");
+                            break;
+                        case 5: // PHONO MM
+                            menu_pointer = PHONO_MENU_NUM;
                             break;
                     }
                     break;
@@ -392,21 +586,68 @@ void buttons_in_menu_process(uint32_t butt_num) {
                 case EQ_MENU_NUM:
                     ESP_LOGW(TAG, "FUTURE UPDATE");
                     break;
+                case BALANCE_MENU_NUM:
+                    ESP_LOGW(TAG, "FUTURE UPDATE");
+                    break;
+            }
+            break;
+
+            // Стандартна логіка для всіх інших меню
+            switch (menu_pointer) {
+                case MAIN_MENU_NUM:
+                    switch (main_menu_pointer) {
+                        case 0: // EQ PRESET
+                            menu_pointer = EQ_MENU_NUM;
+                            break;
+                        case 1: // FILTERS
+                            menu_pointer = FILTERS_MENU_NUM;
+                            break;
+                        case 2: // VOLUME/BAL
+                            menu_pointer = BALANCE_MENU_NUM;
+                            break;
+                        case 3: // SPATIAL 3D
+                            ESP_LOGW(TAG, "FUTURE UPDATE: SPATIAL 3D");
+                            break;
+                        case 4: // NIGHT MOD
+                            ESP_LOGW(TAG, "FUTURE UPDATE: NIGHT MOD");
+                            break;
+                        case 5: // PHONO MM
+                            menu_pointer = PHONO_MENU_NUM;
+                            break;
+                    }
+                    break;
+                case FILTERS_MENU_NUM:
+                    ESP_LOGW(TAG, "FUTURE UPDATE");
+                    break;
+                case EQ_MENU_NUM:
+                    ESP_LOGW(TAG, "FUTURE UPDATE");
+                    break;
+                case BALANCE_MENU_NUM:
+                    ESP_LOGW(TAG, "FUTURE UPDATE");
+                    break;
+            
             }
             break;
         case PIN_BTN_4:  // ESC
-            switch (menu_pointer) {
-                case MAIN_MENU_NUM:
-                    ESP_LOGW(TAG, "FUTURE UPDATE");
-                    break;
-                case FILTERS_MENU_NUM:
-                    menu_pointer = 0;
-                    break;
-                case EQ_MENU_NUM:
-                    menu_pointer = 0;
-                    break;
-            }
-            break;
+        button_held = false; // Скидаємо прапорець затискання при виході
+        switch (menu_pointer) {
+            case MAIN_MENU_NUM:
+                ESP_LOGW(TAG, "FUTURE UPDATE");
+                break;
+            case FILTERS_MENU_NUM:
+                menu_pointer = 0;
+                break;
+            case EQ_MENU_NUM:
+                menu_pointer = 0;
+                break;
+             case BALANCE_MENU_NUM:
+                menu_pointer = 0;
+                break;
+             case PHONO_MENU_NUM:
+                menu_pointer = 0;
+                break;
+        }
+        break;
     }
 }
 

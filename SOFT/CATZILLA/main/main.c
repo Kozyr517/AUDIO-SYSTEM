@@ -18,7 +18,7 @@ static const char *TAG = "MAIN";
 
 // ==================== MAIN ====================
 void app_main(void) {
-    ESP_LOGI(TAG, "=== СТАРТ СИСТЕМИ CATZILLA Pip-Boy ===");
+    ESP_LOGI(TAG, "=== СТАРТ СИСТЕМИ CATZILLA");
 
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_EN_ALL_POWER) | (1ULL << PIN_VSYS_EN) |
