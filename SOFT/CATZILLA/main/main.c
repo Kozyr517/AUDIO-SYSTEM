@@ -14,6 +14,9 @@
 #define PIN_EN_ALL_POWER    GPIO_NUM_21
 #define PIN_EN_ADDR_LED     GPIO_NUM_47
 
+// Піни для світлодіодів
+
+
 static const char *TAG = "MAIN";
 
 // ==================== MAIN ====================
@@ -41,6 +44,7 @@ void app_main(void) {
 
     display_init();
     buttons_init();
+    leds_init();
 
     ESP_LOGI(TAG, "Готово! Перехід у фоновий режим.");
 
