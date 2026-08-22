@@ -1,0 +1,16 @@
+idf_component_register(
+    SRCS 
+        "animation.c"
+        "anim_cat1.c"
+        "anim_cat2.c"
+        "anim_cat3.c"
+        "anim_cat4.c"
+        "anim_cat5.c"
+        "anim_cat6.c"
+        "anim_cat7.c"
+    INCLUDE_DIRS 
+        "."
+    REQUIRES 
+        GP1247AI 
+        driver
+)
