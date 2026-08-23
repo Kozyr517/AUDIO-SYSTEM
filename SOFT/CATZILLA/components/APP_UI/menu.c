@@ -1,20 +1,22 @@
 #include "menu.h"
 #include "Sinclair_S8x8.h"
 #include "driver/spi_master.h"
-#include "animation.h"
 #include "Font16x16.h"
 #include "driver/gpio.h"
 #include <string.h>
 #include "rom/ets_sys.h"
 #include "led_strip.h"
-#include "ak_presets.h"
-
-// ДОДАНІ БІБЛІОТЕКИ:
 #include "esp_log.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "gp1247ai.h"
+
+#include "animation.h"
+#include "anim_cat1.h"
+#include "anim_cat2.h"
+#include "anim_cat3.h"
+#include "anim_cat4.h"
+#include "anim_cat5.h"
+#include "anim_cat6.h"
+#include "anim_cat7.h"
+
 
 // ================= ПІНИ КНОПОК ТА СВІТЛОДІОДІВ =================
 #define PIN_BTN_1           GPIO_NUM_1   // Кнопка 1 -> Світлодіод 4 (індекс 3)
@@ -40,10 +42,19 @@
 
 static const char *TAG = "MENU";
 
-// ================= ГЛОБАЛЬНІ ЗМІННІ =================
-// Підключаємо вже існуючий об'єкт екрана, який створено в lcd.c
-extern TypeDef_GP1247AI lcd;
+// Глобальні змінні
+TypeDef_GP1247AI lcd_instance;
+TypeDef_GP1247AI* lcd = &lcd_instance;
+spi_device_handle_t g_spi_handle;
 
+// Передача даних через SPI
+void dma_spi_transmit(uint8_t *data, size_t size) {
+    spi_transaction_t trans = {
+        .tx_buffer = (void *)data,
+        .length = (8 * size)
+    };
+    spi_device_transmit(g_spi_handle, &trans);
+}
 
 // ==================== ФУНКЦІЯ-АДАПТЕР ДЛЯ КАРТИНОК ====================
 void draw_cat_frame(uint16_t start_x, uint16_t start_y, const uint8_t *h_bitmap, uint16_t w, uint16_t h) {
@@ -66,7 +77,7 @@ void draw_cat_frame(uint16_t start_x, uint16_t start_y, const uint8_t *h_bitmap,
             }
         }
     }
-    LCD_DrawBitmap(&lcd, start_x, start_y, v_bitmap, w, h, 1);
+    LCD_DrawBitmap(lcd, start_x, start_y, v_bitmap, w, h, 1);
 }
 
 // =================== АНІМАЦІЯ ЗАВАНТАЖЕННЯ ===================
@@ -82,15 +93,15 @@ void draw_boot_animation(void) {
 
     ESP_LOGI(TAG, "Запуск тестової анімації...");
 
-    LCD_clear(&lcd);
-    LCD_Update(&lcd);
+    LCD_clear(lcd);
+    LCD_Update(lcd);
 
     uint8_t current_frame = 0;
 
     for (int16_t x = start_x; x <= end_x; x += step_x) {
-        LCD_clear(&lcd); 
+        LCD_clear(lcd); 
         draw_cat_frame(x, cat_y, test_anim[current_frame], TEST_ANIM_W, TEST_ANIM_H);
-        LCD_Update(&lcd); 
+        LCD_Update(lcd); 
 
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
 
@@ -100,23 +111,24 @@ void draw_boot_animation(void) {
         }
     }
 
-    LCD_print(&lcd, "CATZILLA", (253 - (8 * 16)) / 2, 10, (const uint8_t*)Font16x16, 0);
-    LCD_print(&lcd, "ONLINE", (253 - (6 * 16)) / 2, 35, (const uint8_t*)Font16x16, 0);
+    LCD_print(lcd, "CATZILLA", (253 - (8 * 16)) / 2, 10, (const uint8_t*)Font16x16, 0);
+    LCD_print(lcd, "ONLINE", (253 - (6 * 16)) / 2, 35, (const uint8_t*)Font16x16, 0);
     
-    LCD_Update(&lcd);
+    LCD_Update(lcd);
     vTaskDelay(pdMS_TO_TICKS(2000));
 }
 
-static uint32_t press_start_tick = 0;
+void delay_ms_wrapper(uint32_t ms) {
+    esp_rom_delay_us(ms * 1000);
+}
+
+// static uint32_t press_start_tick = 0; // Закоментовано, оскільки змінна не використовувалася
 static bool button_held = false;
 
 // ================= КОЛЬОРИ ТА LED (10% ЯСКРАВОСТІ) =================
 typedef struct { float r, g, b; } Color;
 
-// 10% яскравість фонового смарагдово-білого кольору
 static const Color COLOR_IDLE   = {4.0f, 24.0f, 9.0f};  
-
-// 10% яскравість жовтого кольору при натисканні
 static const Color COLOR_ACTIVE = {25.5f, 18.0f, 0.0f};
 
 static Color current_colors[LED_COUNT_FRONT];
@@ -162,97 +174,113 @@ const char* eq_names[6] = {"POP", "ROCK", "JAZZ", "SYMPH", "NATURE", "BASS"};
 const char* balance_names[3] = {"VOL", "L/R", "F/B"};
 const char* phono_names[3]  = {"NEEDLE", "TOTAL", "ERASE"};
 
+void display_init() {
+    spi_bus_config_t buscfg = {
+        .sclk_io_num = PIN_NUM_SCLK,
+        .mosi_io_num = PIN_NUM_MOSI,
+        .miso_io_num = -1,
+        .quadwp_io_num = -1,
+        .quadhd_io_num = -1,
+        .max_transfer_sz = 2100
+    };
+    ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+
+    spi_device_interface_config_t dev_config = {
+        .clock_source = SOC_MOD_CLK_XTAL,
+        .clock_speed_hz = 2500000,
+        .mode = 0,
+        .spics_io_num = PIN_NUM_LCD_CS,
+        .queue_size = 300,
+        .post_cb = NULL,
+        .pre_cb = NULL,
+        .flags = SPI_DEVICE_TXBIT_LSBFIRST,
+    };
+    ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev_config, &g_spi_handle));
+
+    lcd->dma_spi_transmit = dma_spi_transmit;
+    lcd->delay_ms = delay_ms_wrapper;
+
+    gpio_set_level(PIN_NUM_LCD_RS, 1);
+    vTaskDelay(pdMS_TO_TICKS(50));
+    GP1247AI_Ini(lcd);
+
+    draw_boot_animation();
+}
+
 void set_main_menu() {
-    LCD_clear(&lcd);
+    LCD_clear(lcd);
 
     switch (main_menu_pointer) {
-        case 0: LCD_DrawRect(&lcd, 1, 1, 92, 20, 1); break;
-        case 1: LCD_DrawRect(&lcd, 1, 22, 92, 20, 1); break;
-        case 2: LCD_DrawRect(&lcd, 1, 43, 92, 20, 1); break;
-        case 3: LCD_DrawRect(&lcd, 95, 1, 92, 20, 1); break;
-        case 4: LCD_DrawRect(&lcd, 95, 22, 92, 20, 1); break;
-        case 5: LCD_DrawRect(&lcd, 95, 43, 92, 20, 1); break;
+        case 0: LCD_DrawRect(lcd, 1, 1, 92, 20, 1); break;
+        case 1: LCD_DrawRect(lcd, 1, 22, 92, 20, 1); break;
+        case 2: LCD_DrawRect(lcd, 1, 43, 92, 20, 1); break;
+        case 3: LCD_DrawRect(lcd, 95, 1, 92, 20, 1); break;
+        case 4: LCD_DrawRect(lcd, 95, 22, 92, 20, 1); break;
+        case 5: LCD_DrawRect(lcd, 95, 43, 92, 20, 1); break;
     }
 
-    LCD_DrawRect(&lcd, 2, 2, 90, 18, 1);
-    LCD_print(&lcd, "EQ PRESET", 11, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 2, 90, 18, 1);
+    LCD_print(lcd, "EQ PRESET", 11, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 23, 90, 18, 1);
-    LCD_print(&lcd, "FILTERS", 19, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 23, 90, 18, 1);
+    LCD_print(lcd, "FILTERS", 19, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 44, 90, 18, 1);
-    LCD_print(&lcd, "VOLUME/BAL", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 44, 90, 18, 1);
+    LCD_print(lcd, "VOLUME/BAL", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 96, 2, 90, 18, 1);
-    LCD_print(&lcd, "SPATIAL 3D", 101, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 96, 2, 90, 18, 1);
+    LCD_print(lcd, "SPATIAL 3D", 101, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 96, 23, 90, 18, 1);
-    LCD_print(&lcd, "NIGHT MODE", 105, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 96, 23, 90, 18, 1);
+    LCD_print(lcd, "NIGHT MOD", 105, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 96, 44, 90, 18, 1);
-    LCD_print(&lcd, "PHONO MM", 109, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 96, 44, 90, 18, 1);
+    LCD_print(lcd, "PHONO MM", 109, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 190, 2, 60, 60, 1);
-    LCD_Update(&lcd);
+    LCD_DrawRect(lcd, 190, 2, 60, 60, 1);
+    LCD_Update(lcd);
 }
 
 void set_filters_menu() {
-    LCD_clear(&lcd);
-
-    // Короткі інформаційні описи фільтрів
-    const char* filter_descs[6] = {
-        "SHARP ROLL-OFF",   // 0: SILK
-        "SLOW ROLL-OFF",    // 1: PURRITY
-        "SD SHARP",         // 2: DRIVE (Short Delay Sharp)
-        "SD SLOW",          // 3: ATMOS (Short Delay Slow)
-        "SUPER SLOW",       // 4: VILVET
-        "LOW DISPERSION"    // 5: DIRECT
-    };
+    LCD_clear(lcd);
 
     switch (filters_menu_pointer) {
-        case 0: LCD_DrawRect(&lcd, 1, 1, 68, 20, 1); break;
-        case 1: LCD_DrawRect(&lcd, 1, 22, 68, 20, 1); break;
-        case 2: LCD_DrawRect(&lcd, 1, 43, 68, 20, 1); break;
-        case 3: LCD_DrawRect(&lcd, 69, 1, 68, 20, 1); break;
-        case 4: LCD_DrawRect(&lcd, 69, 22, 68, 20, 1); break;
-        case 5: LCD_DrawRect(&lcd, 69, 43, 68, 20, 1); break;
+        case 0: LCD_DrawRect(lcd, 1, 1, 68, 20, 1); break;
+        case 1: LCD_DrawRect(lcd, 1, 22, 68, 20, 1); break;
+        case 2: LCD_DrawRect(lcd, 1, 43, 68, 20, 1); break;
+        case 3: LCD_DrawRect(lcd, 69, 1, 68, 20, 1); break;
+        case 4: LCD_DrawRect(lcd, 69, 22, 68, 20, 1); break;
+        case 5: LCD_DrawRect(lcd, 69, 43, 68, 20, 1); break;
     }
 
-    LCD_DrawRect(&lcd, 2, 2, 66, 18, 1);
-    LCD_print(&lcd, "SILK", 19, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 2, 66, 18, 1);
+    LCD_print(lcd, "SILK", 19, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 23, 66, 18, 1);
-    LCD_print(&lcd, "PURRITY", 7, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 23, 66, 18, 1);
+    LCD_print(lcd, "PURRITY", 7, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 44, 66, 18, 1);
-    LCD_print(&lcd, "DRIVE", 15, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 44, 66, 18, 1);
+    LCD_print(lcd, "DRIVE", 15, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 70, 2, 66, 18, 1);
-    LCD_print(&lcd, "ATMOS", 83, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 70, 2, 66, 18, 1);
+    LCD_print(lcd, "ATMOS", 83, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 70, 23, 66, 18, 1);
-    LCD_print(&lcd, "VILVET", 79, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 70, 23, 66, 18, 1);
+    LCD_print(lcd, "VILVET", 79, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 70, 44, 66, 18, 1);
-    LCD_print(&lcd, "DIRECT", 79, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 70, 44, 66, 18, 1);
+    LCD_print(lcd, "DIRECT", 79, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    // Праве інформаційне вікно з описом
-    LCD_DrawRect(&lcd, 139, 2, 111, 60, 1);
-    LCD_print(&lcd, "INFO:", 145, 15, (const uint8_t*)Sinclair_S8x8, 0);
-    // Виводимо опис поточного обраного фільтра
-    LCD_print(&lcd, filter_descs[filters_menu_pointer], 145, 30, (const uint8_t*)Sinclair_S8x8, 0);
-    animation_select((anim_id_t)(ANIM_CAT_3 + filters_menu_pointer));
-    animation_draw();
-
-    LCD_Update(&lcd);
+    LCD_DrawRect(lcd, 139, 2, 111, 60, 1);
+    LCD_Update(lcd);
 }
 
 void set_eq_menu() {
-    LCD_clear(&lcd);
-    LCD_print(&lcd, eq_names[eq_menu_pointer], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_clear(lcd);
+    LCD_print(lcd, eq_names[eq_menu_pointer], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
 
     for (int px = 117; px < 251; px += 4) {
-        LCD_DrawPixel(&lcd, px, 29, 1);
+        LCD_DrawPixel(lcd, px, 29, 1);
     }
 
     int prev_x = 0;
@@ -262,10 +290,10 @@ void set_eq_menu() {
         int x = 121 + i * 14;
         int y = 62 - eq_presets[eq_menu_pointer][i];
 
-        LCD_DrawRect(&lcd, x - 1, y - 1, 3, 3, 1);
+        LCD_DrawRect(lcd, x - 1, y - 1, 3, 3, 1);
 
         if (i > 0) {
-            LCD_DrawLine(&lcd, prev_x, prev_y, x, y, 1);
+            LCD_DrawLine(lcd, prev_x, prev_y, x, y, 1);
         }
 
         prev_x = x;
@@ -273,87 +301,81 @@ void set_eq_menu() {
     }
 
     switch (eq_menu_pointer) {
-        case 0: LCD_DrawRect(&lcd, 1, 1, 52, 20, 1); break;
-        case 1: LCD_DrawRect(&lcd, 1, 22, 52, 20, 1); break;
-        case 2: LCD_DrawRect(&lcd, 1, 43, 52, 20, 1); break;
-        case 3: LCD_DrawRect(&lcd, 55, 1, 58, 20, 1); break;
-        case 4: LCD_DrawRect(&lcd, 55, 22, 58, 20, 1); break;
-        case 5: LCD_DrawRect(&lcd, 55, 43, 58, 20, 1); break;
+        case 0: LCD_DrawRect(lcd, 1, 1, 52, 20, 1); break;
+        case 1: LCD_DrawRect(lcd, 1, 22, 52, 20, 1); break;
+        case 2: LCD_DrawRect(lcd, 1, 43, 52, 20, 1); break;
+        case 3: LCD_DrawRect(lcd, 55, 1, 58, 20, 1); break;
+        case 4: LCD_DrawRect(lcd, 55, 22, 58, 20, 1); break;
+        case 5: LCD_DrawRect(lcd, 55, 43, 58, 20, 1); break;
     }
 
-    LCD_DrawRect(&lcd, 2, 2, 50, 18, 1);
-    LCD_print(&lcd, "POP", 16, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 2, 50, 18, 1);
+    LCD_print(lcd, "POP", 16, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 23, 50, 18, 1);
-    LCD_print(&lcd, "ROCK", 12, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 23, 50, 18, 1);
+    LCD_print(lcd, "ROCK", 12, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 44, 50, 18, 1);
-    LCD_print(&lcd, "JAZZ", 11, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 44, 50, 18, 1);
+    LCD_print(lcd, "JAZZ", 11, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 56, 2, 56, 18, 1);
-    LCD_print(&lcd, "SYMPH", 65, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 56, 2, 56, 18, 1);
+    LCD_print(lcd, "SYMPH", 65, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 56, 23, 56, 18, 1);
-    LCD_print(&lcd, "NATURE", 61, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 56, 23, 56, 18, 1);
+    LCD_print(lcd, "NATURE", 61, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 56, 44, 56, 18, 1);
-    LCD_print(&lcd, "BASS", 69, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 56, 44, 56, 18, 1);
+    LCD_print(lcd, "BASS", 69, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 115, 2, 137, 60, 1);
-    animation_select((anim_id_t)(ANIM_CAT_1 + eq_menu_pointer));
-    animation_draw();
-    LCD_Update(&lcd);
+    LCD_DrawRect(lcd, 115, 2, 137, 60, 1);
+    LCD_Update(lcd);
 }
 
 void set_balance_menu() {
-    LCD_clear(&lcd);
-    LCD_print(&lcd, balance_names[balance_menu_pointer], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_clear(lcd);
+    LCD_print(lcd, balance_names[balance_menu_pointer], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
 
     switch (balance_menu_pointer) {
-        case 0: LCD_DrawRect(&lcd, 1, 1, 112, 20, 1); break;
-        case 1: LCD_DrawRect(&lcd, 1, 22, 112, 20, 1); break;
-        case 2: LCD_DrawRect(&lcd, 1, 43, 112, 20, 1); break;
+        case 0: LCD_DrawRect(lcd, 1, 1, 112, 20, 1); break;
+        case 1: LCD_DrawRect(lcd, 1, 22, 112, 20, 1); break;
+        case 2: LCD_DrawRect(lcd, 1, 43, 112, 20, 1); break;
     }
 
-    LCD_DrawRect(&lcd, 2, 2, 110, 18, 1);
-    LCD_print(&lcd, "MASTER VOLUME", 11, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 2, 110, 18, 1);
+    LCD_print(lcd, "MASTER VOLUME", 11, 7, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 23, 110, 18, 1);
-    LCD_print(&lcd, "BALANCE LEFT/RIGHT", 7, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 23, 110, 18, 1);
+    LCD_print(lcd, "BALANCE LEFT/RIGHT", 7, 28, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 44, 110, 18, 1);
-    LCD_print(&lcd, "BALANCE FRONT/BACK", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 44, 110, 18, 1);
+    LCD_print(lcd, "BALANCE FRONT/BACK", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 115, 2, 137, 60, 1);
-    //animation_select((anim_id_t)(ANIM_CAT_1 + balance_menu_pointer));
-    //animation_draw();
-    LCD_Update(&lcd);
+    LCD_DrawRect(lcd, 115, 2, 137, 60, 1);
+    LCD_Update(lcd);
 }
 
 void set_phono_menu() {
-    LCD_clear(&lcd);
+    LCD_clear(lcd);
 
     switch (phono_menu_pointer) {
-        case 0: LCD_DrawRect(&lcd, 1, 16, 152, 15, 1); break;
-        case 1: LCD_DrawRect(&lcd, 1, 46, 152, 15, 1); break;
+        case 0: LCD_DrawRect(lcd, 1, 16, 152, 15, 1); break;
+        case 1: LCD_DrawRect(lcd, 1, 46, 152, 15, 1); break;
     }
 
-    LCD_DrawRect(&lcd, 2, 2, 150, 13, 1);
-    LCD_print(&lcd, "000.015h30m", 42, 4, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 2, 150, 13, 1);
+    LCD_print(lcd, "000.015h30m", 42, 4, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 17, 150, 13, 1);
-    LCD_print(&lcd, "ERASE NEEDLE TIME", 10, 19, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 17, 150, 13, 1);
+    LCD_print(lcd, "ERASE NEEDLE TIME", 10, 19, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 32, 150, 13, 1);
-    LCD_print(&lcd, "000.100h10m", 42, 34, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 32, 150, 13, 1);
+    LCD_print(lcd, "000.100h10m", 42, 34, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 2, 47, 150, 13, 1);
-    LCD_print(&lcd, "ERASE TOTAL TIME", 14, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    LCD_DrawRect(lcd, 2, 47, 150, 13, 1);
+    LCD_print(lcd, "ERASE TOTAL TIME", 14, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    LCD_DrawRect(&lcd, 155, 2, 95, 60, 1);
-    animation_select((anim_id_t)(ANIM_CAT_1 + phono_menu_pointer));
-    animation_draw();
-    LCD_Update(&lcd);
+    LCD_DrawRect(lcd, 155, 2, 95, 60, 1);
+    LCD_Update(lcd);
 }
 
 void menu_update() {
@@ -402,7 +424,6 @@ void buttons_in_menu_process(uint32_t butt_num) {
 
         case PIN_BTN_3: // OK
             if (menu_pointer == PHONO_MENU_NUM) {
-                // ... (тут залишається ваш код затискання кнопки на 3 секунди для Phono) ...
                 ESP_LOGI(TAG, "Кнопку затиснуто, утримуйте 3 секунди...");
                 bool held_successfully = true;
 
@@ -433,17 +454,11 @@ void buttons_in_menu_process(uint32_t butt_num) {
                         case 1: menu_pointer = FILTERS_MENU_NUM; break;
                         case 2: menu_pointer = BALANCE_MENU_NUM; break;
                         case 3: ESP_LOGW(TAG, "FUTURE UPDATE: SPATIAL 3D"); break;
-                        case 4: ESP_LOGW(TAG, "FUTURE UPDATE: NIGHT MODE"); break;
+                        case 4: ESP_LOGW(TAG, "FUTURE UPDATE: NIGHT MOD"); break;
                         case 5: menu_pointer = PHONO_MENU_NUM; break;
                     }
                     break;
-                    
                 case FILTERS_MENU_NUM:
-                    // ВІДПРАВКА КОМАНДИ ПО I2C
-                    ak_presets_apply_by_idx(filters_menu_pointer);
-                    ESP_LOGI(TAG, "Відправлено команду застосувати фільтр: %d", filters_menu_pointer);
-                    break;
-                    
                 case EQ_MENU_NUM:
                 case BALANCE_MENU_NUM:
                     ESP_LOGW(TAG, "FUTURE UPDATE");

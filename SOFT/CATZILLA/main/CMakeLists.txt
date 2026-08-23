@@ -1,21 +1,9 @@
 idf_component_register(
-    SRCS
+    SRCS 
+        "lcd.c" 
         "main.c"
-        "lcd.c"
-    INCLUDE_DIRS
+    INCLUDE_DIRS 
         "."
-    REQUIRES
-        driver
-        freertos
-        log
-        esp_adc
-        led_strip
-        DS18b20
-        GP1247AI
-        ADAU
-        AK_DRIVERS
-        i2c_bus
-        analizator
-        APP_UI
-        ANIMATIONS
+    REQUIRES 
+        DS18b20 driver esp_adc led_strip GP1247AI APP_UI
 )

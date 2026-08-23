@@ -1,9 +1,0 @@
-idf_component_register(
-    SRCS
-        "dsp.c"
-    INCLUDE_DIRS
-        "."
-    REQUIRES
-        driver
-        i2c_bus
-)

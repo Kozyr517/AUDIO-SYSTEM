@@ -10,7 +10,7 @@
 
 #define RX_SIZE 1024
 #define COLUM_SIZE 254
-
+// ==================== ПІНИ RX ====================
 #define I2S_DIN  GPIO_NUM_18
 #define I2S_BCK  GPIO_NUM_17
 #define I2S_LRCK GPIO_NUM_16

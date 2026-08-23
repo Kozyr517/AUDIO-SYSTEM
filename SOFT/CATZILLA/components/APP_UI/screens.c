@@ -1,6 +1,8 @@
 #include "screens.h"
 #include "analizator.h"
-#include "gp1247ai.h"
+#include "GP1247AI.h"
+#include "Font16x16.h"
+#include "Sinclair_S8x8.h"
 
 // Зовнішня змінна дисплея, ініціалізована в основному модулі
 extern TypeDef_GP1247AI lcd;
@@ -36,7 +38,7 @@ static void draw_cat_volume_bar(uint8_t volume) {
     uint8_t paw_gap = 3;
 
     uint8_t total_width = NUM_PAWS * (paw_w + paw_gap) + 3;
-    LCD_DrawRectangle(&lcd, start_x - 3, start_y - 3, total_width, 16);
+    LCD_DrawRect(&lcd, start_x - 3, start_y - 3, total_width, 16, 1);
 
     for (uint8_t i = 0; i < NUM_PAWS; i++) {
         uint8_t x_pos = start_x + (i * (paw_w + paw_gap));

@@ -7,7 +7,6 @@ idf_component_register(
         "."
     REQUIRES 
         GP1247AI 
-        ADAU 
         analizator
         ANIMATIONS 
         driver
