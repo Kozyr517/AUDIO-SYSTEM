@@ -2,7 +2,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_rom_sys.h"
-#include "esp_log.h"
 
 static const char *TAG = "DS18B20";
 
