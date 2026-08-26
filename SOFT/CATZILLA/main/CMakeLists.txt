@@ -1,9 +1,19 @@
 idf_component_register(
     SRCS 
-        "lcd.c" 
-        "main.c"
+        "main.c" 
+        "buttons.c"
+        "menu.c" 
+        "lcd.c"
+        "analizator.c"
+        cooling.c
     INCLUDE_DIRS 
         "."
     REQUIRES 
-        DS18b20 driver esp_adc led_strip GP1247AI APP_UI
+        driver 
+        esp_adc 
+        led_strip 
+        GP1247AI 
+        ds18b20 
+        animation
+        espressif__esp-dsp
 )

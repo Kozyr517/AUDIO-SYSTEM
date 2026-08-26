@@ -1,9 +1,0 @@
-idf_component_register(
-    SRCS 
-        "analizator.c"
-    INCLUDE_DIRS 
-        "."
-    REQUIRES 
-        driver 
-        esp-dsp
-)

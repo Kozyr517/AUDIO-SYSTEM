@@ -1,8 +1,3 @@
-#include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "driver/spi_master.h"
-#include "esp_err.h"
 #include "lcd.h"
 
 TypeDef_GP1247AI lcd;
@@ -25,7 +20,7 @@ void lcd_bus_init(void) {
 
 	spi_device_interface_config_t dev_config = {
 		.clock_source = SOC_MOD_CLK_XTAL,
-		.clock_speed_hz = 2000000,
+		.clock_speed_hz = 2500000,
 		.mode = 0,
 		.spics_io_num = PIN_NUM_LCD_CS,
 		.queue_size = 300,
@@ -76,4 +71,4 @@ void lcd_print(const char *str, uint8_t x, uint8_t y, const uint8_t *p_font, uin
 
 void lcd_draw_rectangle(uint8_t x, uint8_t y, uint8_t w, uint8_t h) { LCD_DrawRect(&lcd, x, y, w, h, 1); }
 
-void lcd_set_brightness(uint16_t brightness) { GP1247AI_set_brightness(&lcd, brightness); }
+//void lcd_set_brightness(uint16_t brightness) { GP1247AI_set_brightness(&lcd, brightness); }
