@@ -11,6 +11,27 @@
 
 extern uint8_t is_input_sig_flag;
 
+// ==================== ДОДАНІ ЗМІННІ ТА НАЛАШТУВАННЯ АВТОВИХОДУ ====================
+#define MENU_AUTO_EXIT_TIMEOUT_MS 10000 // Час автовиходу з будь-якого меню/підменю (10 сек)
+static TickType_t last_menu_activity_tick = 0;
+
+// Функція для повного скидання меню у початковий стан
+static void reset_menu_pointers(void) {
+    menu_pointer = MAIN_MENU_NUM;
+    main_menu_pointer = 0;
+    filters_menu_pointer = 0;
+    eq_menu_pointer = 0;
+    balance_menu_pointer = 0;
+    phono_menu_pointer = 0;
+    old_menu_pointer = 255; // Форсуємо повну перемальовку при наступному вході
+}
+
+// Функція виходу з меню назад на робочий екран (Спектр або Очікування)
+static void exit_setup_menu(void) {
+    current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
+    reset_menu_pointers();
+}
+
 // ==================== ДАНІ ТА СТРУКТУРИ LED ====================
 typedef struct { float r, g, b; } Color;
 static const Color COLOR_IDLE   = {4.0f, 24.0f, 9.0f};  
@@ -79,7 +100,7 @@ static void leds_init(void) {
     xTaskCreate(led_fader_task, "led_fader", 2048, NULL, 5, NULL);
 }
 
-// ==================== ЛОГІКА КНОПОК ====================
+// ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
 void buttons_in_menu_process(uint32_t butt_num) {
     switch (butt_num) {
         case PIN_BTN_1: 
@@ -117,9 +138,9 @@ void buttons_in_menu_process(uint32_t butt_num) {
 
         case PIN_BTN_4: 
             if (menu_pointer == MAIN_MENU_NUM) {
-                current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
+                exit_setup_menu(); // Вихід з головного меню в режим спектра / очікування
             } else {
-                menu_pointer = MAIN_MENU_NUM;
+                menu_pointer = MAIN_MENU_NUM; // Повернення з підменю в головне меню
             }
             break;
     }
@@ -139,8 +160,8 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
         } 
         else if (btn_pin == PIN_BTN_3 && is_long_press) {
             current_state = STATE_SETUP_MENU;
-            menu_pointer = MAIN_MENU_NUM;
-            old_menu_pointer = 255;
+            reset_menu_pointers();
+            last_menu_activity_tick = xTaskGetTickCount(); // Фіксуємо час входу в меню
         }
     } 
     else if (current_state == STATE_VOLUME_POPUP) {
@@ -157,6 +178,8 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
         }
     } 
     else if (current_state == STATE_SETUP_MENU) {
+        // Оновлюємо таймер активності при натисканні БУДЬ-ЯКОЇ кнопки у БУДЬ-ЯКОМУ підменю
+        last_menu_activity_tick = xTaskGetTickCount(); 
         buttons_in_menu_process(btn_pin);
     }
 }
@@ -171,7 +194,8 @@ static void button_task(void* arg) {
     TickType_t last_press_time = 0;
 
     while (1) {
-        if (xQueueReceive(gpio_event_queue, &io_num, portMAX_DELAY)) {
+        // Чекаємо подію кнопок не більше 200 мс, щоб регулярно перевіряти автовихід
+        if (xQueueReceive(gpio_event_queue, &io_num, pdMS_TO_TICKS(200))) {
             TickType_t now = xTaskGetTickCount();
 
             if (now - last_press_time > pdMS_TO_TICKS(150)) {
@@ -192,14 +216,19 @@ static void button_task(void* arg) {
                 handle_button_event(io_num, is_long_press);
             }
         }
+        
+        // ==================== АВТОВИХІД З БУДЬ-ЯКОГО МЕНЮ / ПІДМЕНЮ ====================
+        if (current_state == STATE_SETUP_MENU) {
+            if ((xTaskGetTickCount() - last_menu_activity_tick) > pdMS_TO_TICKS(MENU_AUTO_EXIT_TIMEOUT_MS)) {
+                exit_setup_menu(); // Автоматично повертаємося на головний екран
+            }
+        }
     }
 }
 
 void buttons_init(void) {
-    // Ініціалізація підсвітки
     leds_init();
 
-    // Ініціалізація GPIO кнопок
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_BTN_1) | (1ULL << PIN_BTN_2) | (1ULL << PIN_BTN_3) | (1ULL << PIN_BTN_4),
         .mode = GPIO_MODE_INPUT,

@@ -15,7 +15,7 @@
 #include "analizator.h"
 #include "animation.h"
 #include "Sinclair_S8x8.h"
-#include "Font16x16.h"
+
 
 static const char *TAG = "MAIN";
 
@@ -48,24 +48,22 @@ static uint8_t colum_timers[COLUM_SIZE] = {0};
 
 // ==================== ГРАФІКА ТА ІНТЕРФЕЙС ====================
 void draw_boot_animation(void) {
-    for (int16_t x = 0; x <= 208; x += 8) {
-        lcd_clear(); 
+   for (int16_t x = -130; x <= 253; x += 6) {
+        lcd_clear();
         animation_draw(ANIM_CAT1, x, 8);
         lcd_update(); 
         vTaskDelay(pdMS_TO_TICKS(40));
     }
 
     lcd_clear();
-    lcd_print("CATZILLA", (253 - (8 * 16)) / 2, 10, (const uint8_t*)Font16x16, 0);
-    lcd_print("ONLINE", (253 - (6 * 16)) / 2, 35, (const uint8_t*)Font16x16, 0);
+    lcd_print("WELCOME", (253 - (6 * 16)) / 2, 35, (const uint8_t*)Sinclair_S8x8, 0);
     lcd_update();
     vTaskDelay(pdMS_TO_TICKS(1500));
 }
 
 void draw_idle_cat2_frame(void) {
     lcd_clear();
-    animation_draw(ANIM_CAT2, 96, 8);
-    lcd_print("NO SIGNAL", 92, 52, (const uint8_t*)Sinclair_S8x8, 0);
+    animation_draw(ANIM_CAT2, 63, 8);
     lcd_update();
 }
 

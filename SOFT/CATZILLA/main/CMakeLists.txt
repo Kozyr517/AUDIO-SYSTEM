@@ -5,7 +5,7 @@ idf_component_register(
         "menu.c" 
         "lcd.c"
         "analizator.c"
-        cooling.c
+        "cooling.c"
     INCLUDE_DIRS 
         "."
     REQUIRES 
@@ -16,4 +16,5 @@ idf_component_register(
         ds18b20 
         animation
         espressif__esp-dsp
+        esp_timer
 )

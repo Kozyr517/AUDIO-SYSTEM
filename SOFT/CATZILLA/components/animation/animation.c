@@ -9,6 +9,7 @@
 #include "anim_cat6.h"
 #include "anim_cat7.h"
 
+
 typedef void (*anim_draw_func_t)(uint16_t x, uint16_t y);
 
 static const anim_draw_func_t anim_registry[ANIM_COUNT] = {
@@ -26,3 +27,4 @@ void animation_draw(anim_id_t id, uint16_t x, uint16_t y) {
         anim_registry[id](x, y);
     }
 }
+

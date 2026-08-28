@@ -3,6 +3,7 @@
 #include "Font16x16.h"
 #include "Sinclair_S8x8.h"
 #include "animation.h"
+#include "esp_timer.h"
 
 uint8_t menu_pointer = 0;
 uint8_t main_menu_pointer = 0;
@@ -168,9 +169,19 @@ static void set_phono_menu(void) {
 }
 
 void menu_update(void) {
-    if (menu_pointer != old_menu_pointer || main_menu_pointer != old_main_menu_pointer ||
-        filters_menu_pointer != old_filters_menu_pointer || eq_menu_pointer != old_eq_menu_pointer || 
-        balance_menu_pointer != old_balance_menu_pointer || phono_menu_pointer != old_phono_menu_pointer) {
+    static int64_t last_anim_time = 0;
+    int64_t now = esp_timer_get_time() / 1000; // Час у мс
+
+    bool menu_changed = (menu_pointer != old_menu_pointer || 
+                         main_menu_pointer != old_main_menu_pointer ||
+                         filters_menu_pointer != old_filters_menu_pointer || 
+                         eq_menu_pointer != old_eq_menu_pointer || 
+                         balance_menu_pointer != old_balance_menu_pointer || 
+                         phono_menu_pointer != old_phono_menu_pointer);
+
+    // Перемальовуємо при зміні пункту АБО кожні 100 мс для циклічної анімації
+    if (menu_changed || (now - last_anim_time >= 100)) {
+        last_anim_time = now;
 
         old_eq_menu_pointer = eq_menu_pointer;
         old_filters_menu_pointer = filters_menu_pointer;
