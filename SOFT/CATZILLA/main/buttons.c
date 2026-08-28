@@ -99,7 +99,29 @@ static void leds_init(void) {
     xTaskCreate(led_fader_task, "led_fader", 2048, NULL, 5, NULL);
 }
 
-// ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
+// ==================== РЕГУЛЮВАННЯ ГУЧНОСТІ ====================
+static void change_volume(int delta) {
+    int new_vol = (int)master_volume + delta;
+    
+    if (new_vol > 100) new_vol = 100;
+    if (new_vol < 0)   new_vol = 0;
+    
+    if (new_vol != master_volume) {
+        master_volume = (uint8_t)new_vol;
+        
+        // Вивід повідомлення про зміну та відправку команди у термінал
+        ESP_LOGI(TAG_BTN, "[VOLUME] New Level: %d | Sent Command to AMP/DSP", master_volume);
+        
+        /* 
+         * Вставка виклику відправки по I2C / UART / SPI:
+         * send_volume_to_dsp(master_volume);
+         */
+    }
+    
+    current_state = STATE_VOLUME_POPUP;
+    last_vol_activity_tick = xTaskGetTickCount();
+}
+
 // ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
 void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
     switch (butt_num) {
@@ -169,7 +191,6 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                     break;
 
                 case PHONO_MENU_NUM:
-                    // Скидання часу здійснюється ВИКЛЮЧНО при тривалому утриманні (2 секунди)
                     if (is_long_press) {
                         if (phono_menu_pointer == 0) {
                             ESP_LOGI(TAG_BTN, "[ACTION TRIGGERED] ERASE NEEDLE TIME Executed!");
@@ -194,14 +215,10 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 void handle_button_event(uint32_t btn_pin, bool is_long_press) {
     if (current_state == STATE_IDLE_CAT2 || current_state == STATE_SPECTRUM) {
         if (btn_pin == PIN_BTN_1) {
-            if (master_volume < 100) master_volume++;
-            current_state = STATE_VOLUME_POPUP;
-            last_vol_activity_tick = xTaskGetTickCount();
+            change_volume(1);
         } 
         else if (btn_pin == PIN_BTN_2) {
-            if (master_volume > 0) master_volume--;
-            current_state = STATE_VOLUME_POPUP;
-            last_vol_activity_tick = xTaskGetTickCount();
+            change_volume(-1);
         } 
         else if (btn_pin == PIN_BTN_3 && is_long_press) {
             current_state = STATE_SETUP_MENU;
@@ -214,12 +231,10 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
     } 
     else if (current_state == STATE_VOLUME_POPUP) {
         if (btn_pin == PIN_BTN_1) {
-            if (master_volume < 100) master_volume++;
-            last_vol_activity_tick = xTaskGetTickCount();
+            change_volume(1);
         } 
         else if (btn_pin == PIN_BTN_2) {
-            if (master_volume > 0) master_volume--;
-            last_vol_activity_tick = xTaskGetTickCount();
+            change_volume(-1);
         } 
         else if (btn_pin == PIN_BTN_4) {
             current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
@@ -246,9 +261,10 @@ static void button_task(void* arg) {
 
             if (now - last_press_time > pdMS_TO_TICKS(150)) {
                 last_press_time = now;
-                bool is_long_press = false;
 
+                // Обробка довгого натискання PIN_BTN_3
                 if (io_num == PIN_BTN_3) {
+                    bool is_long_press = false;
                     TickType_t start_hold = xTaskGetTickCount();
                     while (gpio_get_level(PIN_BTN_3) == 1) {
                         if ((xTaskGetTickCount() - start_hold) >= pdMS_TO_TICKS(2000)) {
@@ -257,9 +273,36 @@ static void button_task(void* arg) {
                         }
                         vTaskDelay(pdMS_TO_TICKS(40));
                     }
+                    handle_button_event(io_num, is_long_press);
                 }
+                // АВТОПОВТОР: Для регулювання гучності поза меню
+                else if ((io_num == PIN_BTN_1 || io_num == PIN_BTN_2) && 
+                         (current_state != STATE_SETUP_MENU)) {
+                    
+                    // Перший одиночний клік
+                    handle_button_event(io_num, false);
 
-                handle_button_event(io_num, is_long_press);
+                    // Очікування утримання 1 секунду
+                    TickType_t start_hold = xTaskGetTickCount();
+                    bool auto_repeat = false;
+                    while (gpio_get_level(io_num) == 1) {
+                        if ((xTaskGetTickCount() - start_hold) >= pdMS_TO_TICKS(1000)) {
+                            auto_repeat = true;
+                            break;
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(50));
+                    }
+
+                    // Швидке автоінкрементування/декрементування під час утримання
+                    while (auto_repeat && gpio_get_level(io_num) == 1) {
+                        handle_button_event(io_num, false);
+                        vTaskDelay(pdMS_TO_TICKS(80)); // Швидкість автоповтору (80 мс)
+                    }
+                }
+                // Стандартна обробка для інших кнопок/коротких натискань
+                else {
+                    handle_button_event(io_num, false);
+                }
             }
         }
         
