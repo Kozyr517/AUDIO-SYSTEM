@@ -8,28 +8,28 @@
 #include "led_strip.h"
 #include "menu.h"
 #include "app_state.h"
+#include "esp_log.h"
+
+static const char *TAG_BTN = "BUTTONS";
 
 extern uint8_t is_input_sig_flag;
 
-// ==================== ДОДАНІ ЗМІННІ ТА НАЛАШТУВАННЯ АВТОВИХОДУ ====================
-#define MENU_AUTO_EXIT_TIMEOUT_MS 10000 // Час автовиходу з будь-якого меню/підменю (10 сек)
+#define MENU_AUTO_EXIT_TIMEOUT_MS 10000 
 static TickType_t last_menu_activity_tick = 0;
 
-// Функція для повного скидання меню у початковий стан
-static void reset_menu_pointers(void) {
-    menu_pointer = MAIN_MENU_NUM;
-    main_menu_pointer = 0;
-    filters_menu_pointer = 0;
-    eq_menu_pointer = 0;
-    balance_menu_pointer = 0;
-    phono_menu_pointer = 0;
-    old_menu_pointer = 255; // Форсуємо повну перемальовку при наступному вході
+static void load_menu_pointers_from_ram(void) {
+    eq_menu_pointer      = saved_eq_preset;
+    filters_menu_pointer = saved_filter;
+    balance_menu_pointer = saved_balance;
+    phono_menu_pointer   = 0;
 }
 
-// Функція виходу з меню назад на робочий екран (Спектр або Очікування)
 static void exit_setup_menu(void) {
+    eeprom_save_all_settings();
+
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
-    reset_menu_pointers();
+    menu_pointer = MAIN_MENU_NUM;
+    old_menu_pointer = 255;
 }
 
 // ==================== ДАНІ ТА СТРУКТУРИ LED ====================
@@ -51,7 +51,6 @@ static Color current_colors[LED_COUNT_FRONT];
 static Color target_colors[LED_COUNT_FRONT];
 static QueueHandle_t gpio_event_queue = NULL;
 
-// ==================== ЛОГІКА ПІДСВІТКИ ====================
 static void led_fader_task(void *pvParameters) {
     const float step = 0.25f; 
     while (1) {
@@ -101,7 +100,8 @@ static void leds_init(void) {
 }
 
 // ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
-void buttons_in_menu_process(uint32_t butt_num) {
+// ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
+void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
     switch (butt_num) {
         case PIN_BTN_1: 
             switch (menu_pointer) {
@@ -130,7 +130,52 @@ void buttons_in_menu_process(uint32_t butt_num) {
                         case 0: menu_pointer = EQ_MENU_NUM; break;
                         case 1: menu_pointer = FILTERS_MENU_NUM; break;
                         case 2: menu_pointer = BALANCE_MENU_NUM; break;
+                        
+                        case 3: 
+                            saved_spatial_3d = !saved_spatial_3d;
+                            ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Spatial 3D set to: %s", saved_spatial_3d ? "ON" : "OFF");
+                            old_menu_pointer = 255;
+                            break;
+
+                        case 4: 
+                            saved_night_mode = !saved_night_mode;
+                            ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Night Mode set to: %s", saved_night_mode ? "ON" : "OFF");
+                            old_menu_pointer = 255;
+                            break;
+
                         case 5: menu_pointer = PHONO_MENU_NUM; break;
+                    }
+                    break;
+
+                case EQ_MENU_NUM:
+                    saved_eq_preset = eq_menu_pointer;
+                    ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] EQ Preset set to: %d (%s)", 
+                             saved_eq_preset, eq_names[saved_eq_preset]);
+                    old_menu_pointer = 255;
+                    break;
+
+                case FILTERS_MENU_NUM:
+                    saved_filter = filters_menu_pointer;
+                    ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Filter set to: %d (%s)", 
+                             saved_filter, filter_names[saved_filter]);
+                    old_menu_pointer = 255;
+                    break;
+
+                case BALANCE_MENU_NUM:
+                    saved_balance = balance_menu_pointer;
+                    ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Balance Mode set to: %d (%s)", 
+                             saved_balance, balance_names[saved_balance]);
+                    old_menu_pointer = 255;
+                    break;
+
+                case PHONO_MENU_NUM:
+                    // Скидання часу здійснюється ВИКЛЮЧНО при тривалому утриманні (2 секунди)
+                    if (is_long_press) {
+                        if (phono_menu_pointer == 0) {
+                            ESP_LOGI(TAG_BTN, "[ACTION TRIGGERED] ERASE NEEDLE TIME Executed!");
+                        } else if (phono_menu_pointer == 1) {
+                            ESP_LOGI(TAG_BTN, "[ACTION TRIGGERED] ERASE TOTAL TIME Executed!");
+                        }
                     }
                     break;
             }
@@ -138,9 +183,9 @@ void buttons_in_menu_process(uint32_t butt_num) {
 
         case PIN_BTN_4: 
             if (menu_pointer == MAIN_MENU_NUM) {
-                exit_setup_menu(); // Вихід з головного меню в режим спектра / очікування
+                exit_setup_menu();
             } else {
-                menu_pointer = MAIN_MENU_NUM; // Повернення з підменю в головне меню
+                menu_pointer = MAIN_MENU_NUM;
             }
             break;
     }
@@ -160,8 +205,11 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
         } 
         else if (btn_pin == PIN_BTN_3 && is_long_press) {
             current_state = STATE_SETUP_MENU;
-            reset_menu_pointers();
-            last_menu_activity_tick = xTaskGetTickCount(); // Фіксуємо час входу в меню
+            menu_pointer = MAIN_MENU_NUM;
+            old_menu_pointer = 255;
+            
+            load_menu_pointers_from_ram();
+            last_menu_activity_tick = xTaskGetTickCount();
         }
     } 
     else if (current_state == STATE_VOLUME_POPUP) {
@@ -178,9 +226,8 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
         }
     } 
     else if (current_state == STATE_SETUP_MENU) {
-        // Оновлюємо таймер активності при натисканні БУДЬ-ЯКОЇ кнопки у БУДЬ-ЯКОМУ підменю
-        last_menu_activity_tick = xTaskGetTickCount(); 
-        buttons_in_menu_process(btn_pin);
+        last_menu_activity_tick = xTaskGetTickCount();
+        buttons_in_menu_process(btn_pin, is_long_press);
     }
 }
 
@@ -194,7 +241,6 @@ static void button_task(void* arg) {
     TickType_t last_press_time = 0;
 
     while (1) {
-        // Чекаємо подію кнопок не більше 200 мс, щоб регулярно перевіряти автовихід
         if (xQueueReceive(gpio_event_queue, &io_num, pdMS_TO_TICKS(200))) {
             TickType_t now = xTaskGetTickCount();
 
@@ -217,10 +263,9 @@ static void button_task(void* arg) {
             }
         }
         
-        // ==================== АВТОВИХІД З БУДЬ-ЯКОГО МЕНЮ / ПІДМЕНЮ ====================
         if (current_state == STATE_SETUP_MENU) {
             if ((xTaskGetTickCount() - last_menu_activity_tick) > pdMS_TO_TICKS(MENU_AUTO_EXIT_TIMEOUT_MS)) {
-                exit_setup_menu(); // Автоматично повертаємося на головний екран
+                exit_setup_menu();
             }
         }
     }

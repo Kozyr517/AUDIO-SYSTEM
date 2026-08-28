@@ -14,5 +14,6 @@
 #define LED_COUNT_FRONT  4
 
 void buttons_init(void);
+void buttons_in_menu_process(uint32_t butt_num, bool is_long_press);
 
 #endif // BUTTONS_H

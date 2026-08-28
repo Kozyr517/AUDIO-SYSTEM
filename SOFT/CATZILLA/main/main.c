@@ -32,7 +32,7 @@ static const char *TAG = "MAIN";
 
 // ==================== ІНІЦІАЛІЗАЦІЯ СТАНУ ====================
 volatile app_state_t current_state = STATE_BOOT;
-uint8_t master_volume = 40;
+uint8_t master_volume = 10;
 TickType_t last_vol_activity_tick = 0;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ====================
