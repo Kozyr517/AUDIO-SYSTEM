@@ -25,6 +25,8 @@ static const char *TAG = "MAIN";
 #define PIN_EN_POW_ADAU     GPIO_NUM_10
 #define PIN_EN_ALL_POWER    GPIO_NUM_21
 #define PIN_EN_ADDR_LED     GPIO_NUM_47
+#define PIN_ADAU_RES        GPIO_NUM_3
+#define PIN_GP9             GPIO_NUM_9
 
 #define VOL_TIMEOUT_MS      3000
 #define COLUM_SIZE          254
@@ -167,11 +169,12 @@ static void ui_display_task(void *pvParameters) {
 void app_main(void) {
     ESP_LOGI(TAG, "=== СТАРТ СИСТЕМИ CATZILLA ===");
 
-    // Конфігурація ліній живлення
+    // Конфігурація ліній живлення та сигналів керування
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_EN_ALL_POWER) | (1ULL << PIN_VSYS_EN) |
                         (1ULL << PIN_BLE_EN) | (1ULL << PIN_EN_POW_ADAU) |
-                        (1ULL << PIN_EN_ADDR_LED),
+                        (1ULL << PIN_EN_ADDR_LED) | (1ULL << PIN_ADAU_RES) |
+                        (1ULL << PIN_GP9), // Додали пін GP9
         .mode = GPIO_MODE_OUTPUT,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
         .pull_up_en = GPIO_PULLUP_DISABLE,
@@ -179,26 +182,40 @@ void app_main(void) {
     };
     gpio_config(&io_conf);
 
+    // 1. Поетапне ввімкнення ліній живлення для уникнення пікового стрибка струму
     gpio_set_level(PIN_EN_ALL_POWER, 1);
-    gpio_set_level(PIN_VSYS_EN, 1);
-    gpio_set_level(PIN_BLE_EN, 1);
-    gpio_set_level(PIN_EN_POW_ADAU, 1);
-    gpio_set_level(PIN_EN_ADDR_LED, 1);
+    vTaskDelay(pdMS_TO_TICKS(20)); // Пауза на заряд первинних ємностей
 
-    vTaskDelay(pdMS_TO_TICKS(100));
+    gpio_set_level(PIN_VSYS_EN, 1);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    gpio_set_level(PIN_EN_POW_ADAU, 1);
+    gpio_set_level(PIN_GP9, 1);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    gpio_set_level(PIN_BLE_EN, 1);
+    gpio_set_level(PIN_EN_ADDR_LED, 1);
+    
+    // Встановлюємо 0, щоб зняти ADAU зі стану перезавантаження (Reset)
+    gpio_set_level(PIN_ADAU_RES, 0); 
+
+    // 2. Даємо час для повної стабілізації робочих напруг перед ініціалізацією шин
+    vTaskDelay(pdMS_TO_TICKS(150));
 
     // Ініціалізація черг та периферії
     g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
 
     lcd_bus_init();
     lcd_init();
-    analizator_init();
 
-    // Включає і кнопки, і світлодіоди
+    // 3. Час на вихід контролера дисплея зі стану Sleep Out
+    vTaskDelay(pdMS_TO_TICKS(120));
+
+    analizator_init();
     buttons_init();
 
-    // Запуск задач
-    xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 5, NULL);
+    // 4. Запуск задач. temperature_task знижено до 3, щоб пріоритет 5 був повністю відданий UI на старті
+    xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
     xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
 
     ESP_LOGI(TAG, "Система успішно запущена!");
