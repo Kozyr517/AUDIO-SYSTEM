@@ -13,6 +13,8 @@
 #define PIN_ADDR_L_FRONT GPIO_NUM_12
 #define LED_COUNT_FRONT  4
 
+extern void check_system_idle(void);
+
 void buttons_init(void);
 void buttons_in_menu_process(uint32_t butt_num, bool is_long_press);
 

@@ -1,24 +1,55 @@
-#include "buttons.h"
 #include <stdio.h>
 #include <stdbool.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/timers.h"
+#include "freertos/portmacro.h"
 #include "driver/gpio.h"
 #include "led_strip.h"
 #include "menu.h"
 #include "app_state.h"
+#include "buttons.h"
 #include "esp_log.h"
 
 static const char *TAG_BTN = "BUTTONS";
 
-extern uint8_t is_input_sig_flag;
+// Зовнішні залежності системи живлення та стану
+extern volatile uint8_t is_input_sig_flag;
+extern void check_system_idle(void);
+extern void sleep_timer_cb(TimerHandle_t xTimer);
+
+// Прапорець активності кнопок та таймер скидання в 0 (10 сек)
+volatile uint8_t button_idle_flag = 0;
+static TimerHandle_t button_activity_timer = NULL;
 
 #define MENU_AUTO_EXIT_TIMEOUT_MS 10000 
 static TickType_t last_menu_activity_tick = 0;
 
+// Колбек таймера активності: через 10 сек після останнього натискання повертає 0
+static void button_activity_timer_cb(TimerHandle_t xTimer) {
+    button_idle_flag = 0;
+    check_system_idle();
+}
+
+// Оновлення прапорця активності при будь-якій взаємодії
+static void mark_button_activity(void) {
+    button_idle_flag = 1;
+    check_system_idle();
+
+    if (button_activity_timer != NULL) {
+        if (xPortInIsrContext()) {
+            BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+            xTimerResetFromISR(button_activity_timer, &xHigherPriorityTaskWoken);
+            portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+        } else {
+            xTimerReset(button_activity_timer, 0);
+        }
+    }
+}
+
 static void load_menu_pointers_from_ram(void) {
-    eq_menu_pointer      = saved_eq_preset;
+    eq_menu_pointer    = saved_eq_preset;
     filters_menu_pointer = saved_filter;
     balance_menu_pointer = saved_balance;
     phono_menu_pointer   = 0;
@@ -108,14 +139,7 @@ static void change_volume(int delta) {
     
     if (new_vol != master_volume) {
         master_volume = (uint8_t)new_vol;
-        
-        // Вивід повідомлення про зміну та відправку команди у термінал
         ESP_LOGI(TAG_BTN, "[VOLUME] New Level: %d | Sent Command to AMP/DSP", master_volume);
-        
-        /* 
-         * Вставка виклику відправки по I2C / UART / SPI:
-         * send_volume_to_dsp(master_volume);
-         */
     }
     
     current_state = STATE_VOLUME_POPUP;
@@ -172,21 +196,21 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                 case EQ_MENU_NUM:
                     saved_eq_preset = eq_menu_pointer;
                     ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] EQ Preset set to: %d (%s)", 
-                             saved_eq_preset, eq_names[saved_eq_preset]);
+                               saved_eq_preset, eq_names[saved_eq_preset]);
                     old_menu_pointer = 255;
                     break;
 
                 case FILTERS_MENU_NUM:
                     saved_filter = filters_menu_pointer;
                     ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Filter set to: %d (%s)", 
-                             saved_filter, filter_names[saved_filter]);
+                               saved_filter, filter_names[saved_filter]);
                     old_menu_pointer = 255;
                     break;
 
                 case BALANCE_MENU_NUM:
                     saved_balance = balance_menu_pointer;
                     ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Balance Mode set to: %d (%s)", 
-                             saved_balance, balance_names[saved_balance]);
+                               saved_balance, balance_names[saved_balance]);
                     old_menu_pointer = 255;
                     break;
 
@@ -213,6 +237,8 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 }
 
 void handle_button_event(uint32_t btn_pin, bool is_long_press) {
+    mark_button_activity();
+
     if (current_state == STATE_IDLE_CAT2 || current_state == STATE_SPECTRUM) {
         if (btn_pin == PIN_BTN_1) {
             change_volume(1);
@@ -262,8 +288,34 @@ static void button_task(void* arg) {
             if (now - last_press_time > pdMS_TO_TICKS(150)) {
                 last_press_time = now;
 
-                // Обробка довгого натискання PIN_BTN_3
-                if (io_num == PIN_BTN_3) {
+                // 1. Утримування PIN_BTN_4 (ESC) понад 5 сек -> ВИМКНЕННЯ / SLEEP
+                if (io_num == PIN_BTN_4) {
+                    TickType_t start_hold = xTaskGetTickCount();
+                    bool is_power_off_hold = false;
+
+                    while (gpio_get_level(PIN_BTN_4) == 1) {
+                        if ((xTaskGetTickCount() - start_hold) >= pdMS_TO_TICKS(5000)) {
+                            is_power_off_hold = true;
+                            break;
+                        }
+                        vTaskDelay(pdMS_TO_TICKS(50));
+                    }
+
+                    if (is_power_off_hold) {
+                        ESP_LOGW(TAG_BTN, "PIN_BTN_4 утримано > 5 сек. Перехід у режим сну...");
+                        
+                        // КРИТИЧНО: Чекаємо, поки користувач фізично відпустить кнопку!
+                        while(gpio_get_level(PIN_BTN_4) == 1) {
+                            vTaskDelay(pdMS_TO_TICKS(50));
+                        }
+                        
+                        sleep_timer_cb(NULL); // Анімація cat7 + EN=0 + Light Sleep
+                    } else {
+                        handle_button_event(PIN_BTN_4, false);
+                    }
+                }
+                // 2. Утримування PIN_BTN_3 понад 2 сек -> Меню налаштувань
+                else if (io_num == PIN_BTN_3) {
                     bool is_long_press = false;
                     TickType_t start_hold = xTaskGetTickCount();
                     while (gpio_get_level(PIN_BTN_3) == 1) {
@@ -275,14 +327,12 @@ static void button_task(void* arg) {
                     }
                     handle_button_event(io_num, is_long_press);
                 }
-                // АВТОПОВТОР: Для регулювання гучності поза меню
+                // 3. АВТОПОВТОР: Гучність поза меню для BTN_1 / BTN_2
                 else if ((io_num == PIN_BTN_1 || io_num == PIN_BTN_2) && 
                          (current_state != STATE_SETUP_MENU)) {
                     
-                    // Перший одиночний клік
                     handle_button_event(io_num, false);
 
-                    // Очікування утримання 1 секунду
                     TickType_t start_hold = xTaskGetTickCount();
                     bool auto_repeat = false;
                     while (gpio_get_level(io_num) == 1) {
@@ -293,19 +343,19 @@ static void button_task(void* arg) {
                         vTaskDelay(pdMS_TO_TICKS(50));
                     }
 
-                    // Швидке автоінкрементування/декрементування під час утримання
                     while (auto_repeat && gpio_get_level(io_num) == 1) {
                         handle_button_event(io_num, false);
                         vTaskDelay(pdMS_TO_TICKS(80)); // Швидкість автоповтору (80 мс)
                     }
                 }
-                // Стандартна обробка для інших кнопок/коротких натискань
+                // 4. Стандартний короткий клік для інших випадків
                 else {
                     handle_button_event(io_num, false);
                 }
             }
         }
         
+        // Автовихід із меню за таймаутом
         if (current_state == STATE_SETUP_MENU) {
             if ((xTaskGetTickCount() - last_menu_activity_tick) > pdMS_TO_TICKS(MENU_AUTO_EXIT_TIMEOUT_MS)) {
                 exit_setup_menu();
@@ -315,19 +365,25 @@ static void button_task(void* arg) {
 }
 
 void buttons_init(void) {
+    button_activity_timer = xTimerCreate("BtnIdleTimer", 
+                                         pdMS_TO_TICKS(10000), 
+                                         pdFALSE, 
+                                         NULL, 
+                                         button_activity_timer_cb);
+
     leds_init();
 
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_BTN_1) | (1ULL << PIN_BTN_2) | (1ULL << PIN_BTN_3) | (1ULL << PIN_BTN_4),
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_ENABLE,
         .intr_type = GPIO_INTR_POSEDGE
     };
     gpio_config(&io_conf);
 
     gpio_event_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(button_task, "button_task", 3072, NULL, 10, NULL);
+    xTaskCreate(button_task, "button_task", 5120, NULL, 10, NULL);
 
     gpio_install_isr_service(0);
     gpio_isr_handler_add(PIN_BTN_1, gpio_isr_handler, (void*) PIN_BTN_1);

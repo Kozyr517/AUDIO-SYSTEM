@@ -10,7 +10,8 @@ typedef enum {
     STATE_IDLE_CAT2,
     STATE_SPECTRUM,
     STATE_VOLUME_POPUP,
-    STATE_SETUP_MENU
+    STATE_SETUP_MENU,
+    STATE_SLEEP_SHUTDOWN
 } app_state_t;
 
 typedef struct {
