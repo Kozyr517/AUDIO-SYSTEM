@@ -27,4 +27,7 @@ extern TickType_t last_vol_activity_tick;
 extern sensor_t g_sensors[];
 extern const size_t g_sensors_count;
 
+// Прапорець стану MUTE
+extern volatile bool is_muted;
+
 #endif // APP_STATE_H

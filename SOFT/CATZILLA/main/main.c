@@ -47,11 +47,11 @@ TickType_t last_vol_activity_tick = 0;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ТА ПРАПОРЦІ ====================
 extern TypeDef_GP1247AI lcd;
-extern volatile uint8_t is_input_sig_flag;   // Прапорець аудіосигналу (0 = немає, 1 = є)
-extern volatile uint8_t button_idle_flag;    // Прапорець активності кнопок (0 = спокій, 1 = натиснута)
+extern volatile uint8_t is_input_sig_flag;    // Прапорець аудіосигналу (0 = немає, 1 = є)
+extern volatile uint8_t button_idle_flag;     // Прапорець активності кнопок (0 = спокій, 1 = натиснута)
 
 QueueHandle_t g_fft_process_result_queue = NULL;
-static TimerHandle_t sleep_timer = NULL;    // 10-хвилинний таймер бездіяльності
+static TimerHandle_t sleep_timer = NULL;     // 10-хвилинний таймер бездіяльності
 
 static uint8_t colum_data[COLUM_SIZE] = {0};
 static uint8_t old_colum[COLUM_SIZE] = {0};
@@ -105,10 +105,16 @@ void sleep_timer_cb(TimerHandle_t xTimer) {
 static void execute_sleep_sequence(void) {
     ESP_LOGI(TAG, "5 секунд минуло. Відтворення анімації вимкнення...");
     
-    // 1. ВІДРАЗУ відтворюємо анімацію вимкнення
-    lcd_clear();
-    animation_draw(ANIM_CAT3, 63, 8);
-    lcd_update();
+    // === ЗАМІНІТЬ ЦЕЙ БЛОК ===
+    TickType_t start_tick = xTaskGetTickCount();
+    const TickType_t anim_duration = pdMS_TO_TICKS(3000); // 3 секунди анімації
+
+    while ((xTaskGetTickCount() - start_tick) < anim_duration) {
+        lcd_clear();
+        animation_draw(ANIM_CAT3, 63, 8);
+        lcd_update();
+        vTaskDelay(pdMS_TO_TICKS(40)); // ~25 FPS
+    }
 
     // 2. Даємо час на відтворення анімації
     vTaskDelay(pdMS_TO_TICKS(3000));
@@ -120,7 +126,7 @@ static void execute_sleep_sequence(void) {
     while (any_pressed) {
         any_pressed = false;
         for (int i = 0; i < 4; i++) {
-            if (gpio_get_level(btn_pins[i]) == 1) { // 1 = натиснута (підтяжка до землі нормальна)
+            if (gpio_get_level(btn_pins[i]) == 1) { // 1 = натиснута
                 any_pressed = true;
                 break;
             }
@@ -155,14 +161,13 @@ static void execute_sleep_sequence(void) {
     
     ESP_LOGI(TAG, "Пробудження з Light Sleep. Відновлення роботи...");
 
-    // 1. МИТТЄВО вимикаємо wakeup-переривання, щоб уникнути шторму!
+    // 1. МИТТЄВО вимикаємо wakeup-переривання
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     for (size_t i = 0; i < 4; i++) {
         gpio_wakeup_disable(btn_pins[i]);
     }
 
-    // 2. Очікуємо, поки користувач ВІДПУСТИТЬ кнопку, якою розбудив
-    // Це критично, щоб процесор не перевантажувався і не було фальшивих кліків у меню.
+    // 2. Очікуємо, поки користувач ВІДПУСТИТЬ кнопку
     any_pressed = true;
     while (any_pressed) {
         any_pressed = false;
@@ -184,11 +189,7 @@ static void execute_sleep_sequence(void) {
     // 4. ВІДНОВЛЮЄМО нормальну роботу драйвера кнопок
     buttons_init();
 
-    // 5. Відновлення шини дисплея. 
-    // Якщо дисплей підключений по SPI/GDMA, регістри S3 були скинуті під час сну.
-    // Викликаємо lcd_bus_init(), щоб драйвер ESP-IDF заново підняв шину і не чекав 10 секунд на DMA.
-    // (Примітка: якщо lcd_bus_init() робить malloc без перевірок, і система впаде з помилкою 
-    // "already initialized", напиши мені — треба буде додати lcd_bus_deinit() перед сном).
+    // 5. Відновлення шини дисплея
     lcd_bus_init(); 
     lcd_init();
     vTaskDelay(pdMS_TO_TICKS(120));
@@ -258,6 +259,15 @@ void draw_idle_cat2_frame(void) {
     lcd_update();
 }
 
+// Кадр для стану MUTE: котик ANIM_CAT2 + напис "MUTE" у правому верхньому кутку
+void draw_mute_frame(void) {
+    lcd_clear();
+    animation_draw(ANIM_CAT2, 63, 8);
+    // x = 218 залишає відступ у 4 пікселі від правого краю (254 - 32px = 222)
+    lcd_print("MUTE", 218, 2, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_update();
+}
+
 void draw_spectrum_analyzer_frame(void) {
     if (xQueueReceive(g_fft_process_result_queue, colum_data, 0) == pdTRUE) {
         lcd_clear();
@@ -317,7 +327,10 @@ static void ui_display_task(void *pvParameters) {
     while (1) {
         switch (current_state) {
             case STATE_IDLE_CAT2:
-                if (is_input_sig_flag == 1) {
+                if (is_muted) {
+                    draw_mute_frame();
+                    vTaskDelay(pdMS_TO_TICKS(60));
+                } else if (is_input_sig_flag == 1) {
                     current_state = STATE_SPECTRUM;
                     check_system_idle();
                 } else {
@@ -327,7 +340,10 @@ static void ui_display_task(void *pvParameters) {
                 break;
 
             case STATE_SPECTRUM:
-                if (is_input_sig_flag == 0) {
+                if (is_muted) {
+                    draw_mute_frame();
+                    vTaskDelay(pdMS_TO_TICKS(60));
+                } else if (is_input_sig_flag == 0) {
                     current_state = STATE_IDLE_CAT2;
                     check_system_idle();
                 } else {
@@ -396,10 +412,10 @@ void app_main(void) {
 
     vTaskDelay(pdMS_TO_TICKS(120)); // Чекаємо готовності матриці
 
-    // КРИТИЧНО: Ініціалізуємо кнопки
+    // Ініціалізуємо кнопки
     buttons_init();
 
-    // Переміщено запуск аналізатора після ініціалізації кнопок та інтерфейсу
+    // Запуск аналізатора
     analizator_init();
 
     // Первинна перевірка стану активності для таймера сну
