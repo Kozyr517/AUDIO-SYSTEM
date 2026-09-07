@@ -25,6 +25,7 @@ static const char *TAG = "MAIN";
 // Прототипи функцій
 void sleep_timer_cb(TimerHandle_t xTimer);
 void check_system_idle(void);
+void draw_boot_animation(void); // ДОДАНО: Вирішує помилку implicit declaration
 
 // ==================== ПІНИ ТА КОНФІГУРАЦІЯ ====================
 #define PIN_VSYS_EN         GPIO_NUM_4
@@ -62,6 +63,28 @@ static volatile bool sleep_timer_running = false;
 
 
 // ==================== УПРАВЛІННЯ ЖИВЛЕННЯМ ПЕРИФЕРІЇ ====================
+
+// Поетапне ввімкнення ліній живлення (винесено з app_main для багаторазового використання)
+static void power_on_peripherals(void) {
+    gpio_set_level(PIN_EN_ALL_POWER, 1);
+    vTaskDelay(pdMS_TO_TICKS(20)); // Пауза на заряд первинних ємностей
+
+    gpio_set_level(PIN_VSYS_EN, 1);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    gpio_set_level(PIN_EN_POW_ADAU, 1);
+    gpio_set_level(PIN_GP9, 1);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    gpio_set_level(PIN_BLE_EN, 1);
+    gpio_set_level(PIN_EN_ADDR_LED, 1);
+    
+    // Встановлюємо 0, щоб зняти ADAU зі стану перезавантаження (Reset)
+    gpio_set_level(PIN_ADAU_RES, 0); 
+
+    // Даємо час для повної стабілізації робочих напруг перед ініціалізацією шин
+    vTaskDelay(pdMS_TO_TICKS(150));
+}
 
 // Знеструмлення всіх ліній живлення (використовується перед сном)
 static void power_off_peripherals(void) {
@@ -135,11 +158,26 @@ static void execute_sleep_sequence(void) {
     esp_light_sleep_start();
 
     // =================================================================
-    // === ПРОБУДЖЕННЯ ===
+    // === ПРОБУДЖЕННЯ (Режим без рестарту) ===
     // =================================================================
     
-    ESP_LOGI(TAG, "Пробудження! Виконуємо повне перезавантаження системи...");
-    esp_restart(); 
+    ESP_LOGI(TAG, "Пробудження з Light Sleep. Відновлення роботи...");
+    
+    // 1. Повертаємо живлення периферії
+    power_on_peripherals();
+
+    // 2. Переініціалізація дисплея
+    lcd_init();
+    vTaskDelay(pdMS_TO_TICKS(120)); // Чекаємо готовності матриці
+
+    // 3. Переініціалізація аудіочіпа/аналізатора після втрати живлення
+    analizator_init();
+
+    // 4. Відтворюємо стартову анімацію
+    draw_boot_animation();
+
+    // 5. Повертаємось у стандартний цикл (спектр або кіт)
+    current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 }
 
 // Безпечна функція перевірки стану бездіяльності
@@ -323,25 +361,8 @@ void app_main(void) {
     };
     gpio_config(&io_conf);
 
-    // 1. Поетапне ввімкнення ліній живлення для уникнення пікового стрибка струму
-    gpio_set_level(PIN_EN_ALL_POWER, 1);
-    vTaskDelay(pdMS_TO_TICKS(20)); // Пауза на заряд первинних ємностей
-
-    gpio_set_level(PIN_VSYS_EN, 1);
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    gpio_set_level(PIN_EN_POW_ADAU, 1);
-    gpio_set_level(PIN_GP9, 1);
-    vTaskDelay(pdMS_TO_TICKS(20));
-
-    gpio_set_level(PIN_BLE_EN, 1);
-    gpio_set_level(PIN_EN_ADDR_LED, 1);
-    
-    // Встановлюємо 0, щоб зняти ADAU зі стану перезавантаження (Reset)
-    gpio_set_level(PIN_ADAU_RES, 0); 
-
-    // 2. Даємо час для повної стабілізації робочих напруг перед ініціалізацією шин
-    vTaskDelay(pdMS_TO_TICKS(150));
+    // Використовуємо нову функцію ввімкнення периферії замість дублювання коду
+    power_on_peripherals();
 
     // Створення 10-хвилинного таймера сну (600 000 мс)
     sleep_timer = xTimerCreate("SleepTimer", pdMS_TO_TICKS(600000), pdFALSE, NULL, sleep_timer_cb);
@@ -352,7 +373,7 @@ void app_main(void) {
     lcd_bus_init();
     lcd_init();
 
-    // 3. Час на вихід контролера дисплея зі стану Sleep Out
+    // Час на вихід контролера дисплея зі стану Sleep Out
     vTaskDelay(pdMS_TO_TICKS(120));
 
     analizator_init();
@@ -361,7 +382,7 @@ void app_main(void) {
     // Первинна перевірка стану активності для таймера сну
     check_system_idle();
 
-    // 4. Запуск задач. temperature_task знижено до 3, щоб пріоритет 5 був повністю відданий UI на старті
+    // Запуск задач. temperature_task знижено до 3, щоб пріоритет 5 був повністю відданий UI на старті
     xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
     xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
 
