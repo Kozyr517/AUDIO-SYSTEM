@@ -8,6 +8,9 @@
 
 static const char *TAG = "MENU_SETTINGS";
 
+// Зовнішній прапорець стану MUTE з buttons.c
+extern volatile bool is_muted;
+
 uint8_t menu_pointer = 0;
 uint8_t main_menu_pointer = 0;
 uint8_t filters_menu_pointer = 0;
@@ -22,10 +25,12 @@ uint8_t old_eq_menu_pointer = 0;
 uint8_t old_balance_menu_pointer = 0;
 uint8_t old_phono_menu_pointer = 0;
 
+static bool old_is_muted = false;
+
 // ==================== ЗБЕРЕЖЕНІ НАЛАШТУВАННЯ В RAM ====================
-uint8_t saved_eq_preset = 0;
-uint8_t saved_filter    = 0;
-uint8_t saved_balance   = 0;
+uint8_t saved_eq_preset  = 0;
+uint8_t saved_filter     = 0;
+uint8_t saved_balance    = 0;
 uint8_t saved_spatial_3d = 0;
 uint8_t saved_night_mode = 0;
 
@@ -42,6 +47,16 @@ static void draw_active_square(int x, int y) {
     }
 }
 
+// Малювання плашки MUTE у правому верхньому кутку вікна анімації/інформації
+static void draw_mute_badge(int x, int y) {
+    if (is_muted) {
+        // Зовнішній рамковий прямокутник
+        lcd_draw_rectangle(x, y, 42, 12);
+        // Заповнений індикатор під текст MUTE
+        lcd_print("MUTE", x + 5, y + 2, (const uint8_t*)Sinclair_S8x8, 0);
+    }
+}
+
 // ==================== ФУНКЦІЇ ЗБЕРЕЖЕННЯ ТА ЗЧИТУВАННЯ EEPROM ====================
 void eeprom_save_all_settings(void) {
     ESP_LOGI(TAG, "===> EEPROM SAVE: EQ=%d (%s), Filter=%d (%s), Balance=%d (%s), Spatial3D=%s, NightMode=%s", 
@@ -50,15 +65,9 @@ void eeprom_save_all_settings(void) {
              saved_balance, balance_names[saved_balance],
              saved_spatial_3d ? "ON" : "OFF",
              saved_night_mode ? "ON" : "OFF");
-
-    /* --- КОД ДЛЯ ЗОВНІШНЬОЇ EEPROM (I2C/SPI) ---
-    uint8_t data_to_write[5] = { saved_eq_preset, saved_filter, saved_balance, saved_spatial_3d, saved_night_mode };
-    // i2c_master_write_to_device(...);
-    ---------------------------------------------- */
 }
 
 void eeprom_load_all_settings(void) {
-    /* --- КОД ДЛЯ ЗЧИТУВАННЯ З ЗОВНІШНЬОЇ EEPROM --- */
     ESP_LOGI(TAG, "EEPROM settings loaded into RAM");
 }
 
@@ -94,7 +103,6 @@ static void set_main_menu(void) {
     lcd_draw_rectangle(96, 44, 90, 18);
     lcd_print("PHONO MM", 109, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
-    // Малювання квадратиків для збережених прямих режимів ON/OFF у Головному меню
     if (saved_spatial_3d) {
         draw_active_square(180, 5);
     }
@@ -104,6 +112,10 @@ static void set_main_menu(void) {
 
     lcd_draw_rectangle(190, 2, 60, 60);
     animation_draw(ANIM_CAT3, 196, 8);
+
+    // Відображення плашки MUTE над/у блоці анімації
+    draw_mute_badge(200, 4);
+
     lcd_update();
 }
 
@@ -141,6 +153,9 @@ static void set_filters_menu(void) {
 
     lcd_draw_rectangle(139, 2, 111, 60);
     animation_draw(ANIM_CAT6, 170, 8);
+
+    draw_mute_badge(200, 4);
+
     lcd_update();
 }
 
@@ -192,6 +207,9 @@ static void set_eq_menu(void) {
     }
 
     lcd_draw_rectangle(115, 2, 137, 60);
+
+    draw_mute_badge(200, 4);
+
     lcd_update();
 }
 
@@ -218,6 +236,9 @@ static void set_balance_menu(void) {
 
     lcd_draw_rectangle(115, 2, 137, 60);
     animation_draw(ANIM_CAT4, 160, 8);
+
+    draw_mute_badge(200, 4);
+
     lcd_update();
 }
 
@@ -238,6 +259,9 @@ static void set_phono_menu(void) {
 
     lcd_draw_rectangle(155, 2, 95, 60);
     animation_draw(ANIM_CAT5, 178, 8);
+
+    draw_mute_badge(200, 4);
+
     lcd_update();
 }
 
@@ -250,7 +274,8 @@ void menu_update(void) {
                          filters_menu_pointer != old_filters_menu_pointer || 
                          eq_menu_pointer != old_eq_menu_pointer || 
                          balance_menu_pointer != old_balance_menu_pointer || 
-                         phono_menu_pointer != old_phono_menu_pointer);
+                         phono_menu_pointer != old_phono_menu_pointer ||
+                         is_muted != old_is_muted); // Реакція на увімкнення/вимкнення MUTE
 
     if (menu_changed || (now - last_anim_time >= 100)) {
         last_anim_time = now;
@@ -261,6 +286,7 @@ void menu_update(void) {
         old_menu_pointer = menu_pointer;
         old_balance_menu_pointer = balance_menu_pointer;
         old_phono_menu_pointer = phono_menu_pointer;
+        old_is_muted = is_muted;
 
         switch (menu_pointer) {
             case MAIN_MENU_NUM:    set_main_menu(); break;

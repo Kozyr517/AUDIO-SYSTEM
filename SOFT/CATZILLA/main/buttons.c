@@ -26,6 +26,24 @@ static TimerHandle_t button_activity_timer = NULL;
 #define MENU_AUTO_EXIT_TIMEOUT_MS 10000 
 static TickType_t last_menu_activity_tick = 0;
 
+// ==================== ЛОГІКА MUTE ====================
+volatile bool is_muted = false;
+
+void set_mute_state(bool enable_mute) {
+    is_muted = enable_mute;
+    if (is_muted) {
+        ESP_LOGW(TAG_BTN, "[AUDIO] MUTE УВІМКНЕНО (Звук вимкнено)");
+        // TODO: Команда вимкнення звуку на DSP / ADAU / Реле
+    } else {
+        ESP_LOGI(TAG_BTN, "[AUDIO] UNMUTE (Звук відновлено)");
+        // TODO: Команда увімкнення звуку на DSP / ADAU / Реле
+    }
+}
+
+void toggle_mute(void) {
+    set_mute_state(!is_muted);
+}
+
 // Колбек таймера активності: через 10 сек після останнього натискання повертає 0
 static void button_activity_timer_cb(TimerHandle_t xTimer) {
     button_idle_flag = 0;
@@ -49,7 +67,7 @@ static void mark_button_activity(void) {
 }
 
 static void load_menu_pointers_from_ram(void) {
-    eq_menu_pointer    = saved_eq_preset;
+    eq_menu_pointer      = saved_eq_preset;
     filters_menu_pointer = saved_filter;
     balance_menu_pointer = saved_balance;
     phono_menu_pointer   = 0;
@@ -239,6 +257,12 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 void handle_button_event(uint32_t btn_pin, bool is_long_press) {
     mark_button_activity();
 
+    // ЯКЩО АКТИВОВАНО MUTE — БУДЬ-ЯКА КНОПКА ЗНІМАЄ ЙОГО ТА ПОГЛИНАЄ НАТИСКАННЯ
+    if (is_muted) {
+        set_mute_state(false);
+        return; 
+    }
+
     if (current_state == STATE_IDLE_CAT2 || current_state == STATE_SPECTRUM) {
         if (btn_pin == PIN_BTN_1) {
             change_volume(1);
@@ -288,13 +312,23 @@ static void button_task(void* arg) {
             if (now - last_press_time > pdMS_TO_TICKS(150)) {
                 last_press_time = now;
 
-                // 1. Утримування PIN_BTN_4 (ESC) понад 5 сек -> ВИМКНЕННЯ / SLEEP
+                // ==================== 1. ОБРОБКА PIN_BTN_4 (2 сек -> MUTE, 5 сек -> SLEEP) ====================
                 if (io_num == PIN_BTN_4) {
                     TickType_t start_hold = xTaskGetTickCount();
                     bool is_power_off_hold = false;
+                    bool is_mute_triggered = false;
 
                     while (gpio_get_level(PIN_BTN_4) == 1) {
-                        if ((xTaskGetTickCount() - start_hold) >= pdMS_TO_TICKS(5000)) {
+                        TickType_t elapsed = xTaskGetTickCount() - start_hold;
+
+                        // Утримання від 2 до 5 секунд -> MUTE
+                        if (!is_mute_triggered && elapsed >= pdMS_TO_TICKS(2000) && elapsed < pdMS_TO_TICKS(5000)) {
+                            is_mute_triggered = true;
+                            toggle_mute();
+                        }
+
+                        // Утримання 5 секунд -> Повне вимкнення / Sleep
+                        if (elapsed >= pdMS_TO_TICKS(5000)) {
                             is_power_off_hold = true;
                             break;
                         }
@@ -302,24 +336,22 @@ static void button_task(void* arg) {
                     }
 
                     if (is_power_off_hold) {
-                        ESP_LOGW(TAG_BTN, "PIN_BTN_4 утримано > 5 сек. Перехід у режим сну...");
-                        
-                        // КРИТИЧНО: Чекаємо, поки користувач фізично відпустить кнопку!
-                        while(gpio_get_level(PIN_BTN_4) == 1) {
-                            vTaskDelay(pdMS_TO_TICKS(50));
-                        }
-                        
-                        sleep_timer_cb(NULL); // Анімація cat7 + EN=0 + Light Sleep
-                    } else {
+                        ESP_LOGW(TAG_BTN, "PIN_BTN_4 утримано 5 сек. Запуск анімації вимкнення...");
+                        current_state = STATE_SLEEP_SHUTDOWN;
+                    } else if (!is_mute_triggered) {
                         handle_button_event(PIN_BTN_4, false);
                     }
                 }
-                // 2. Утримування PIN_BTN_3 понад 2 сек -> Меню налаштувань
+
+                // ==================== 2. ОБРОБКА PIN_BTN_3 (2 сек -> МЕНЮ) ====================
                 else if (io_num == PIN_BTN_3) {
                     bool is_long_press = false;
                     TickType_t start_hold = xTaskGetTickCount();
+
                     while (gpio_get_level(PIN_BTN_3) == 1) {
-                        if ((xTaskGetTickCount() - start_hold) >= pdMS_TO_TICKS(2000)) {
+                        TickType_t elapsed = xTaskGetTickCount() - start_hold;
+
+                        if (elapsed >= pdMS_TO_TICKS(2000)) {
                             is_long_press = true;
                             break;
                         }
@@ -327,7 +359,8 @@ static void button_task(void* arg) {
                     }
                     handle_button_event(io_num, is_long_press);
                 }
-                // 3. АВТОПОВТОР: Гучність поза меню для BTN_1 / BTN_2
+
+                // ==================== 3. АВТОПОВТОР: Гучність поза меню для BTN_1 / BTN_2 ====================
                 else if ((io_num == PIN_BTN_1 || io_num == PIN_BTN_2) && 
                          (current_state != STATE_SETUP_MENU)) {
                     
@@ -335,8 +368,11 @@ static void button_task(void* arg) {
 
                     TickType_t start_hold = xTaskGetTickCount();
                     bool auto_repeat = false;
+
                     while (gpio_get_level(io_num) == 1) {
-                        if ((xTaskGetTickCount() - start_hold) >= pdMS_TO_TICKS(1000)) {
+                        TickType_t elapsed = xTaskGetTickCount() - start_hold;
+
+                        if (elapsed >= pdMS_TO_TICKS(1000)) {
                             auto_repeat = true;
                             break;
                         }
@@ -345,10 +381,11 @@ static void button_task(void* arg) {
 
                     while (auto_repeat && gpio_get_level(io_num) == 1) {
                         handle_button_event(io_num, false);
-                        vTaskDelay(pdMS_TO_TICKS(80)); // Швидкість автоповтору (80 мс)
+                        vTaskDelay(pdMS_TO_TICKS(80));
                     }
                 }
-                // 4. Стандартний короткий клік для інших випадків
+
+                // ==================== 4. Стандартний короткий клік ====================
                 else {
                     handle_button_event(io_num, false);
                 }

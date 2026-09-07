@@ -25,7 +25,7 @@ static const char *TAG = "MAIN";
 // Прототипи функцій
 void sleep_timer_cb(TimerHandle_t xTimer);
 void check_system_idle(void);
-void draw_boot_animation(void); // ДОДАНО: Вирішує помилку implicit declaration
+void draw_boot_animation(void);
 
 // ==================== ПІНИ ТА КОНФІГУРАЦІЯ ====================
 #define PIN_VSYS_EN         GPIO_NUM_4
@@ -64,7 +64,6 @@ static volatile bool sleep_timer_running = false;
 
 // ==================== УПРАВЛІННЯ ЖИВЛЕННЯМ ПЕРИФЕРІЇ ====================
 
-// Поетапне ввімкнення ліній живлення (винесено з app_main для багаторазового використання)
 static void power_on_peripherals(void) {
     gpio_set_level(PIN_EN_ALL_POWER, 1);
     vTaskDelay(pdMS_TO_TICKS(20)); // Пауза на заряд первинних ємностей
@@ -79,14 +78,13 @@ static void power_on_peripherals(void) {
     gpio_set_level(PIN_BLE_EN, 1);
     gpio_set_level(PIN_EN_ADDR_LED, 1);
     
-    // Встановлюємо 0, щоб зняти ADAU зі стану перезавантаження (Reset)
-    gpio_set_level(PIN_ADAU_RES, 0); 
+    // Встановлюємо 1 (Active High), щоб зняти ADAU з режиму Reset
+    gpio_set_level(PIN_ADAU_RES, 1); 
 
-    // Даємо час для повної стабілізації робочих напруг перед ініціалізацією шин
-    vTaskDelay(pdMS_TO_TICKS(150));
+    // Час для стабілізації живлення
+    vTaskDelay(pdMS_TO_TICKS(100));
 }
 
-// Знеструмлення всіх ліній живлення (використовується перед сном)
 static void power_off_peripherals(void) {
     gpio_set_level(PIN_EN_ALL_POWER, 0);
     gpio_set_level(PIN_VSYS_EN, 0);
@@ -94,7 +92,7 @@ static void power_off_peripherals(void) {
     gpio_set_level(PIN_GP9, 0);
     gpio_set_level(PIN_BLE_EN, 0);
     gpio_set_level(PIN_EN_ADDR_LED, 0);
-    gpio_set_level(PIN_ADAU_RES, 0); // ADAU в Reset
+    gpio_set_level(PIN_ADAU_RES, 0); // ADAU утримаємо в Reset
 }
 
 
@@ -105,25 +103,67 @@ void sleep_timer_cb(TimerHandle_t xTimer) {
 
 // Процедура вимкнення та входу в Light Sleep
 static void execute_sleep_sequence(void) {
-    ESP_LOGI(TAG, "Запуск процедури вимкнення пристрою...");
+    ESP_LOGI(TAG, "5 секунд минуло. Відтворення анімації вимкнення...");
     
-    // 1. ВІДРАЗУ відтворюємо анімацію вимкнення (кнопку ще можуть тримати)
+    // 1. ВІДРАЗУ відтворюємо анімацію вимкнення
     lcd_clear();
     animation_draw(ANIM_CAT3, 63, 8);
     lcd_update();
 
-    // 2. Даємо час на відтворення анімації (3 секунди)
+    // 2. Даємо час на відтворення анімації
     vTaskDelay(pdMS_TO_TICKS(3000));
 
-    // 3. Знеструмлення периферії
+    // 3. Очікування відпускання кнопок перед сном
+    ESP_LOGI(TAG, "Очікування відпускання кнопок...");
+    gpio_num_t btn_pins[] = {PIN_BTN_1, PIN_BTN_2, PIN_BTN_3, PIN_BTN_4};
+    bool any_pressed = true;
+    while (any_pressed) {
+        any_pressed = false;
+        for (int i = 0; i < 4; i++) {
+            if (gpio_get_level(btn_pins[i]) == 1) { // 1 = натиснута (підтяжка до землі нормальна)
+                any_pressed = true;
+                break;
+            }
+        }
+        if (any_pressed) {
+            vTaskDelay(pdMS_TO_TICKS(50));
+        }
+    }
+    vTaskDelay(pdMS_TO_TICKS(150)); // Дебаунс
+
+    // 4. Знеструмлюємо периферію
     ESP_LOGW(TAG, "Знеструмлення периферії...");
     power_off_peripherals();
 
-    gpio_num_t btn_pins[] = {PIN_BTN_1, PIN_BTN_2, PIN_BTN_3, PIN_BTN_4};
+    // 5. Конфігурація пінів для пробудження (HIGH LEVEL)
+    for (size_t i = 0; i < 4; i++) {
+        gpio_set_direction(btn_pins[i], GPIO_MODE_INPUT);
+        gpio_set_pull_mode(btn_pins[i], GPIO_PULLDOWN_ONLY);
+        gpio_sleep_set_direction(btn_pins[i], GPIO_MODE_INPUT);
+        gpio_sleep_set_pull_mode(btn_pins[i], GPIO_PULLDOWN_ONLY);
+        gpio_wakeup_enable(btn_pins[i], GPIO_INTR_HIGH_LEVEL);
+    }
+    
+    esp_sleep_enable_gpio_wakeup();
 
-    // 4. Чекаємо відпускання ВСІХ кнопок ТІЛЬКИ ТЕПЕР (після анімації), щоб уникнути повторного пробудження
-    ESP_LOGI(TAG, "Очікування відпускання кнопок перед сном...");
-    bool any_pressed = true;
+    ESP_LOGI(TAG, "Вхід у Light Sleep. Процесор зупинено.");
+    esp_light_sleep_start();
+
+    // =================================================================
+    // === ПРОБУДЖЕННЯ (Режим без рестарту) ===
+    // =================================================================
+    
+    ESP_LOGI(TAG, "Пробудження з Light Sleep. Відновлення роботи...");
+
+    // 1. МИТТЄВО вимикаємо wakeup-переривання, щоб уникнути шторму!
+    esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
+    for (size_t i = 0; i < 4; i++) {
+        gpio_wakeup_disable(btn_pins[i]);
+    }
+
+    // 2. Очікуємо, поки користувач ВІДПУСТИТЬ кнопку, якою розбудив
+    // Це критично, щоб процесор не перевантажувався і не було фальшивих кліків у меню.
+    any_pressed = true;
     while (any_pressed) {
         any_pressed = false;
         for (int i = 0; i < 4; i++) {
@@ -133,50 +173,33 @@ static void execute_sleep_sequence(void) {
             }
         }
         if (any_pressed) {
-            vTaskDelay(pdMS_TO_TICKS(50));
+            vTaskDelay(pdMS_TO_TICKS(20)); 
         }
     }
-    vTaskDelay(pdMS_TO_TICKS(150)); // Дебаунс після відпускання
+    vTaskDelay(pdMS_TO_TICKS(50)); // Дебаунс після відпускання
 
-    // 5. Конфігурація пінів для режиму сну з гарантованим Pull-down
-    for (size_t i = 0; i < 4; i++) {
-        gpio_set_direction(btn_pins[i], GPIO_MODE_INPUT);
-        gpio_set_pull_mode(btn_pins[i], GPIO_PULLDOWN_ONLY);
-        
-        // Перевизначаємо ізоляцію ESP-IDF під час сну
-        gpio_sleep_set_direction(btn_pins[i], GPIO_MODE_INPUT);
-        gpio_sleep_set_pull_mode(btn_pins[i], GPIO_PULLDOWN_ONLY);
-        
-        gpio_wakeup_enable(btn_pins[i], GPIO_INTR_HIGH_LEVEL);
-    }
-    
-    esp_sleep_enable_gpio_wakeup();
-
-    ESP_LOGI(TAG, "Вхід у Light Sleep. Процесор зупинено.");
-
-    // === ПЕРЕХІД У LIGHT SLEEP ===
-    esp_light_sleep_start();
-
-    // =================================================================
-    // === ПРОБУДЖЕННЯ (Режим без рестарту) ===
-    // =================================================================
-    
-    ESP_LOGI(TAG, "Пробудження з Light Sleep. Відновлення роботи...");
-    
-    // 1. Повертаємо живлення периферії
+    // 3. Повертаємо живлення периферії
     power_on_peripherals();
 
-    // 2. Переініціалізація дисплея
+    // 4. ВІДНОВЛЮЄМО нормальну роботу драйвера кнопок
+    buttons_init();
+
+    // 5. Відновлення шини дисплея. 
+    // Якщо дисплей підключений по SPI/GDMA, регістри S3 були скинуті під час сну.
+    // Викликаємо lcd_bus_init(), щоб драйвер ESP-IDF заново підняв шину і не чекав 10 секунд на DMA.
+    // (Примітка: якщо lcd_bus_init() робить malloc без перевірок, і система впаде з помилкою 
+    // "already initialized", напиши мені — треба буде додати lcd_bus_deinit() перед сном).
+    lcd_bus_init(); 
     lcd_init();
-    vTaskDelay(pdMS_TO_TICKS(120)); // Чекаємо готовності матриці
+    vTaskDelay(pdMS_TO_TICKS(120));
 
-    // 3. Переініціалізація аудіочіпа/аналізатора після втрати живлення
-    analizator_init();
-
-    // 4. Відтворюємо стартову анімацію
+    // 6. Першою запускаємо анімацію запуску
     draw_boot_animation();
 
-    // 5. Повертаємось у стандартний цикл (спектр або кіт)
+    // 7. Відновлюємо аналізатор
+    analizator_init();
+
+    // 8. Повертаємось у стандартний цикл
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 }
 
@@ -187,7 +210,6 @@ void check_system_idle(void) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
     bool is_in_isr = xPortInIsrContext();
 
-    // Умова 1: Обидва прапорці в 0 -> запускаємо таймер
     if (is_input_sig_flag == 0 && button_idle_flag == 0) {
         if (!sleep_timer_running) {
             sleep_timer_running = true;
@@ -200,7 +222,6 @@ void check_system_idle(void) {
             }
         }
     } 
-    // Умова 2: Хоча б один прапорець піднято (в 1) -> зупиняємо таймер
     else {
         if (sleep_timer_running) {
             sleep_timer_running = false;
@@ -361,28 +382,30 @@ void app_main(void) {
     };
     gpio_config(&io_conf);
 
-    // Використовуємо нову функцію ввімкнення периферії замість дублювання коду
+    // Увімкнення живлення
     power_on_peripherals();
 
     // Створення 10-хвилинного таймера сну (600 000 мс)
     sleep_timer = xTimerCreate("SleepTimer", pdMS_TO_TICKS(600000), pdFALSE, NULL, sleep_timer_cb);
 
-    // Ініціалізація черг та периферії
+    // Ініціалізація черг та дисплея
     g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
 
     lcd_bus_init();
     lcd_init();
 
-    // Час на вихід контролера дисплея зі стану Sleep Out
-    vTaskDelay(pdMS_TO_TICKS(120));
+    vTaskDelay(pdMS_TO_TICKS(120)); // Чекаємо готовності матриці
 
-    analizator_init();
+    // КРИТИЧНО: Ініціалізуємо кнопки
     buttons_init();
+
+    // Переміщено запуск аналізатора після ініціалізації кнопок та інтерфейсу
+    analizator_init();
 
     // Первинна перевірка стану активності для таймера сну
     check_system_idle();
 
-    // Запуск задач. temperature_task знижено до 3, щоб пріоритет 5 був повністю відданий UI на старті
+    // Запуск задач
     xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
     xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
 
