@@ -241,16 +241,12 @@ void check_system_idle(void) {
 // ==================== ГРАФІКА ТА ІНТЕРФЕЙС ====================
 
 void draw_boot_animation(void) {
-   for (int16_t x = -130; x <= 253; x += 6) {
+    for (int16_t x = -130; x <= 253; x += 6) {
         lcd_clear();
         animation_draw(ANIM_CAT1, x, 8);
-        lcd_update(); 
-        vTaskDelay(pdMS_TO_TICKS(40));
-   }
-   lcd_clear();
-   lcd_print("WELCOME", (253 - (6 * 16)) / 2, 35, (const uint8_t*)Sinclair_S8x8, 0);
-   lcd_update();
-   vTaskDelay(pdMS_TO_TICKS(1500));
+        lcd_update();
+        vTaskDelay(pdMS_TO_TICKS(40)); // Затримка для плавної анімації
+    }
 }
 
 void draw_idle_cat2_frame(void) {

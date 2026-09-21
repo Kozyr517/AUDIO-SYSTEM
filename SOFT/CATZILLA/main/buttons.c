@@ -12,6 +12,11 @@
 #include "buttons.h"
 #include "esp_log.h"
 
+#define MYSPACE_TARGET_COUNT 7
+float myspace_distances[MYSPACE_TARGET_COUNT] = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+bool is_myspace_editing = false;
+uint8_t myspace_target_pointer = 0;
+
 static const char *TAG_BTN = "BUTTONS";
 
 // Зовнішні залежності системи живлення та стану
@@ -67,15 +72,16 @@ static void mark_button_activity(void) {
 }
 
 static void load_menu_pointers_from_ram(void) {
-    eq_menu_pointer      = saved_eq_preset;
-    filters_menu_pointer = saved_filter;
-    balance_menu_pointer = saved_balance;
-    phono_menu_pointer   = 0;
+    eq_menu_pointer        = saved_eq_preset;
+    filters_menu_pointer   = saved_filter;
+    myspace_menu_pointer   = 0;
+    myspace_target_pointer = 0;
+    is_myspace_editing     = false;
+    phono_menu_pointer     = 0;
 }
 
 static void exit_setup_menu(void) {
-    eeprom_save_all_settings();
-
+    is_myspace_editing = false;
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
     menu_pointer = MAIN_MENU_NUM;
     old_menu_pointer = 255;
@@ -167,43 +173,75 @@ static void change_volume(int delta) {
 // ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
 void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
     switch (butt_num) {
-        case PIN_BTN_1: 
+        case PIN_BTN_1: // Вгору / Збільшення значення
             switch (menu_pointer) {
                 case MAIN_MENU_NUM:    if (main_menu_pointer > 0) main_menu_pointer--; break;
                 case FILTERS_MENU_NUM: if (filters_menu_pointer > 0) filters_menu_pointer--; break;
                 case EQ_MENU_NUM:      if (eq_menu_pointer > 0) eq_menu_pointer--; break;
-                case BALANCE_MENU_NUM: if (balance_menu_pointer > 0) balance_menu_pointer--; break;
                 case PHONO_MENU_NUM:   if (phono_menu_pointer > 0) phono_menu_pointer--; break;
+                
+                case MYSPACE_MENU_NUM: 
+                    if (is_myspace_editing) {
+                        // Режим редагування: збільшуємо значення з кроком 10 см (0.10 м)
+                        myspace_distances[myspace_menu_pointer] += 0.10f;
+                        if (myspace_distances[myspace_menu_pointer] > 10.0f) {
+                            myspace_distances[myspace_menu_pointer] = 10.0f;
+                        }
+                    } else {
+                        // Режим навігації підменю (0..6): перехід вгору
+                        if (myspace_menu_pointer > 0) myspace_menu_pointer--;
+                    }
+                    old_menu_pointer = 255;
+                    break;
             }
             break;
 
-        case PIN_BTN_2: 
+        case PIN_BTN_2: // Вниз / Зменшення значення
             switch (menu_pointer) {
                 case MAIN_MENU_NUM:    if (main_menu_pointer < 5) main_menu_pointer++; break;
                 case FILTERS_MENU_NUM: if (filters_menu_pointer < 5) filters_menu_pointer++; break;
                 case EQ_MENU_NUM:      if (eq_menu_pointer < 5) eq_menu_pointer++; break;
-                case BALANCE_MENU_NUM: if (balance_menu_pointer < 5) balance_menu_pointer++; break;
                 case PHONO_MENU_NUM:   if (phono_menu_pointer < 1) phono_menu_pointer++; break;
+                
+                case MYSPACE_MENU_NUM: 
+                    if (is_myspace_editing) {
+                        // Режим редагування: зменшуємо значення з кроком 10 см (0.10 м)
+                        myspace_distances[myspace_menu_pointer] -= 0.10f;
+                        if (myspace_distances[myspace_menu_pointer] < 0.0f) {
+                            myspace_distances[myspace_menu_pointer] = 0.0f;
+                        }
+                    } else {
+                        // Режим навігації підменю: перехід вниз по всім 7 пунктам (0..6)
+                        if (myspace_menu_pointer < (MYSPACE_TARGET_COUNT - 1)) {
+                            myspace_menu_pointer++;
+                        }
+                    }
+                    old_menu_pointer = 255;
+                    break;
             }
             break;
 
-        case PIN_BTN_3: 
+        case PIN_BTN_3: // Вибір / Підтвердження
             switch (menu_pointer) {
                 case MAIN_MENU_NUM:
                     switch (main_menu_pointer) {
                         case 0: menu_pointer = EQ_MENU_NUM; break;
                         case 1: menu_pointer = FILTERS_MENU_NUM; break;
-                        case 2: menu_pointer = BALANCE_MENU_NUM; break;
+                        case 2: 
+                            menu_pointer = MYSPACE_MENU_NUM; 
+                            myspace_menu_pointer = 0;
+                            is_myspace_editing = false;
+                            break;
                         
                         case 3: 
-                            saved_spatial_3d = !saved_spatial_3d;
-                            ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Spatial 3D set to: %s", saved_spatial_3d ? "ON" : "OFF");
+                            saved_spatial = !saved_spatial;
+                            ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Spatial set to: %s", spatial_names[saved_spatial]);
                             old_menu_pointer = 255;
                             break;
 
                         case 4: 
-                            saved_night_mode = !saved_night_mode;
-                            ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Night Mode set to: %s", saved_night_mode ? "ON" : "OFF");
+                            saved_sys = !saved_sys;
+                            ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] System Mode set to: %s", sys_names[saved_sys]);
                             old_menu_pointer = 255;
                             break;
 
@@ -225,10 +263,14 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                     old_menu_pointer = 255;
                     break;
 
-                case BALANCE_MENU_NUM:
-                    saved_balance = balance_menu_pointer;
-                    ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Balance Mode set to: %d (%s)", 
-                               saved_balance, balance_names[saved_balance]);
+                case MYSPACE_MENU_NUM:
+                    // Вхід / вихід з режиму редагування поточного пункту MySpace
+                    is_myspace_editing = !is_myspace_editing;
+                    myspace_target_pointer = myspace_menu_pointer;
+                    ESP_LOGI(TAG_BTN, "[MYSPACE] Target item: %d | Edit Mode: %s | Distance: %.2f m", 
+                             myspace_menu_pointer, 
+                             is_myspace_editing ? "ENTER" : "EXIT", 
+                             myspace_distances[myspace_menu_pointer]);
                     old_menu_pointer = 255;
                     break;
 
@@ -244,11 +286,19 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
             }
             break;
 
-        case PIN_BTN_4: 
+        case PIN_BTN_4: // Назад / Вихід
             if (menu_pointer == MAIN_MENU_NUM) {
                 exit_setup_menu();
-            } else {
+            } 
+            else if (menu_pointer == MYSPACE_MENU_NUM && is_myspace_editing) {
+                // Вихід з редагування значення назад у список пунктів MySpace
+                is_myspace_editing = false;
+                old_menu_pointer = 255;
+            } 
+            else {
+                // Повернення в головне меню
                 menu_pointer = MAIN_MENU_NUM;
+                old_menu_pointer = 255;
             }
             break;
     }
@@ -361,9 +411,7 @@ static void button_task(void* arg) {
                 }
 
                 // ==================== 3. АВТОПОВТОР: Гучність поза меню для BTN_1 / BTN_2 ====================
-                else if ((io_num == PIN_BTN_1 || io_num == PIN_BTN_2) && 
-                         (current_state != STATE_SETUP_MENU)) {
-                    
+                else if ((io_num == PIN_BTN_1 || io_num == PIN_BTN_2) && (current_state != STATE_SETUP_MENU)) {
                     handle_button_event(io_num, false);
 
                     TickType_t start_hold = xTaskGetTickCount();
@@ -385,7 +433,7 @@ static void button_task(void* arg) {
                     }
                 }
 
-                // ==================== 4. Стандартний короткий клік ====================
+                // ==================== 4. Стандартний короткий клік (для меню та інших режимів) ====================
                 else {
                     handle_button_event(io_num, false);
                 }
