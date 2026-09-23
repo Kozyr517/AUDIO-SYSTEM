@@ -244,68 +244,172 @@ static void draw_triangle_down(int x, int y) {
     LCD_DrawPixel(&lcd, x, y + 2, 1);
 }
 
+// Локальна функція для малювання 11x9 мордочки котика (слухач по центру)
+static void draw_mini_cat(int x, int y) {
+    // Бітмап котика (1 - малюємо піксель, 0 - пропускаємо)
+    static const uint16_t cat_bmp[9] = {
+        0b10000000001, // 0: *         * (Кінчики вух)
+        0b11000000011, // 1: **       **
+        0b11100000111, // 2: ***     ***
+        0b10111111101, // 3: * ******* * (Верх голови)
+        0b10000000001, // 4: *         * (Боки)
+        0b10100000101, // 5: * *     * * (Очі)
+        0b10000100001, // 6: *    *    * (Ніс)
+        0b01001110010, // 7:  *  ***  *  (Щоки/Рот)
+        0b00111111100  // 8:   *******   (Підборіддя)
+    };
+    
+    for (int row = 0; row < 9; row++) {
+        for (int col = 0; col < 11; col++) {
+            if (cat_bmp[row] & (1 << (10 - col))) {
+                // Використовуємо прямокутник 1x1 як універсальний піксель
+                lcd_draw_rectangle(x + col, y + row, 1, 1);
+            }
+        }
+    }
+}
+
+// Локальна функція для малювання пунктирної лінії (індикатор дистанції)
+static void draw_dashed_line(int x0, int y0, int x1, int y1) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+    int count = 0;
+
+    while (1) {
+        // Малюємо 2 пікселі, 1 пропускаємо (створюємо ефект пунктиру)
+        if (count % 3 != 0) { 
+            lcd_draw_rectangle(x0, y0, 1, 1);
+        }
+        count++;
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
 static void set_myspace_menu(void) {
     lcd_clear();
 
-    // Логіка автопрокрутки списку (всього 7 пунктів, на екрані водночас відображається 3)
+    // Автопрокрутка списку на 3 елементи
     int start_idx = myspace_menu_pointer;
     if (start_idx > 4) {
-        start_idx = 4; // Обмеження, щоб список не виходив за нижню межу
+        start_idx = 4;
     } else if (start_idx > 0) {
         start_idx -= 1;
     }
 
-    // Фіксовані вертикальні координати Y для трьох видимих рядків меню 
-    // (забезпечують рівні симетричні проміжки між рамками)
     static const int y_offsets[3] = {6, 24, 42};
 
     for (int i = 0; i < 3; i++) {
         int item_idx = start_idx + i;
         int y_offset = y_offsets[i]; 
 
-        // Зовнішня рамка для активного (виділеного курсором) пункту меню:
-        // Ширина зменшена до 132 пікселів, щоб ідеально облягати внутрішню рамку (130px)
+        // Зовнішня та внутрішня рамки лівого меню
         if (item_idx == myspace_menu_pointer) {
             lcd_draw_rectangle(1, y_offset, 132, 16);
         }
-        
-        // Внутрішня рамка для кожного з трьох рядків:
         lcd_draw_rectangle(2, y_offset + 1, 130, 14);
 
-        // Вертикальне відцентрування тексту всередині рамки 
         int text_y = y_offset + 4;
 
-        // Виведення назви налаштування (наприклад, "ROOM", "FRONT L" тощо):
         lcd_print(myspace_names[item_idx], 6, text_y, (const uint8_t*)Sinclair_S8x8, 0);
 
         char val_str[16];
-        
-        // Форматування числового значення дистанції:
         if (item_idx == myspace_menu_pointer && is_myspace_editing) {
             snprintf(val_str, sizeof(val_str), ">%.1fm<", myspace_distances[item_idx]);
         } else {
             snprintf(val_str, sizeof(val_str), " %.1fm ", myspace_distances[item_idx]);
         }
-
-        // Виведення значення дистанції праворуч у рядку:
         lcd_print(val_str, 82, text_y, (const uint8_t*)Sinclair_S8x8, 0);
     }
 
-    // Індикатори прокрутки (трикутники) зміщені на X = 67 для центрування відносно нової ширини 132px
+    // Індикатори прокрутки
     if (start_idx > 0) {
-        draw_triangle_up(67, 2);  // Верхній трикутник
+        draw_triangle_up(67, 2); 
     }
     if (start_idx + 3 < 7) {
-        draw_triangle_down(67, 59); // Нижній трикутник
+        draw_triangle_down(67, 59); 
     }
 
-    // Великий правий прямокутник (інформаційна панель / блок анімації):
-    lcd_draw_rectangle(142, 2, 111, 60);
+    // ==========================================
+    // ПРАВИЙ БЛОК: Схема приміщення 5.1
+    // ==========================================
     
-    // Індикатор статусу MUTE у правому верхньому кутку екрана:
+    // Загальна рамка схеми приміщення
+    lcd_draw_rectangle(142, 2, 111, 60);
+
+    // --- Фронтальні колонки (Y = 5) ---
+    // LF (Лівий фронт, X: 146..164)
+    lcd_draw_rectangle(146, 5, 19, 13);
+    lcd_print("LF", 149, 7, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // C (Центр)
+    lcd_draw_rectangle(176, 5, 19, 13);
+    lcd_print("C", 182, 7, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // S (Сабвуфер)
+    lcd_draw_rectangle(199, 5, 19, 13);
+    lcd_print("S", 203, 7, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // RF (Правий фронт)
+    lcd_draw_rectangle(230, 5, 19, 13);
+    lcd_print("RF", 232, 7, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // --- Слухач (Котик) ---
+    draw_mini_cat(192, 42);
+
+    // --- Тилові колонки (Y = 46) ---
+    // RL (Лівий тил, X: 146..164)
+    lcd_draw_rectangle(146, 46, 19, 13);
+    lcd_print("RL", 148, 48, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // RR (Правий тил)
+    lcd_draw_rectangle(230, 46, 19, 13);
+    lcd_print("RR", 232, 48, (const uint8_t*)Sinclair_S8x8, 0);
+
+
+    // --- ІНДИКАТОРИ ДИСТАНЦІЇ ---
+    switch (myspace_menu_pointer) {
+        case 0: // ROOM (Глибина кімнати - ровно по центру LF та RL, X = 155)
+            // Верхня стрілочка (вказує вгору під LF)
+            lcd_draw_rectangle(155, 19, 1, 1);
+            lcd_draw_rectangle(154, 20, 3, 1);
+            lcd_draw_rectangle(153, 21, 5, 1);
+            
+            // Пунктирна лінія по центру каналів
+            draw_dashed_line(155, 23, 155, 41);
+            
+            // Нижня стрілочка (вказує вниз над RL)
+            lcd_draw_rectangle(153, 43, 5, 1);
+            lcd_draw_rectangle(154, 44, 3, 1);
+            lcd_draw_rectangle(155, 45, 1, 1);
+            break;
+            
+        case 1: // FRONT L
+            draw_dashed_line(155, 18, 192, 42); // Від низу LF до лівого вуха
+            break;
+        case 2: // FRONT R
+            draw_dashed_line(239, 18, 202, 42); // Від низу RF до правого вуха
+            break;
+        case 3: // CENTER
+            draw_dashed_line(185, 18, 196, 40); // Від низу C до голови
+            break;
+        case 4: // SUBWOOFER
+            draw_dashed_line(208, 18, 198, 40); // Від низу S до голови
+            break;
+        case 5: // REAR L
+            draw_dashed_line(166, 52, 190, 48); // Від правого боку RL до лівої щічки
+            break;
+        case 6: // REAR R
+            draw_dashed_line(228, 52, 204, 48); // Від лівого боку RR до правої щічки
+            break;
+    }
+    // ==========================================
+
     draw_mute_badge(200, 4);
 
-    // Оновлення буфера та виведення зображення на фізичний дисплей
     lcd_update();
 }
 
