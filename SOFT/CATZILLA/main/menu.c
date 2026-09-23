@@ -49,13 +49,13 @@ const char* sys_names[2]     = {"SYS 2.1", "SYS 5.1"};
 
 // 7 пунктів для MySpace
 const char* myspace_names[7] = {
-    "ROOM DEPTH", 
-    "FRONT L", 
-    "FRONT R", 
-    "CENTER", 
-    "SUBWOOFER", 
-    "REAR L", 
-    "REAR R"
+    "ROOM SIZE:", 
+    "FRONT L:", 
+    "FRONT R:", 
+    "CENTER:", 
+    "SUBASS:", 
+    "REAR L:", 
+    "REAR R:"
 };
 
 // Малювання заповненого квадрата/кубика 4x4 пікселі у верхньому правому кутку комірки
@@ -76,7 +76,6 @@ static void draw_mute_badge(int x, int y) {
         lcd_print("MUTE", x + 5, y + 2, (const uint8_t*)Sinclair_S8x8, 0);
     }
 }
-
 
 static const uint8_t eq_pop[10]    = {29, 40, 44, 45, 41, 30, 28, 28, 29, 29};
 static const uint8_t eq_rock[10]   = {45, 40, 23, 19, 26, 39, 47, 50, 50, 50};
@@ -221,43 +220,92 @@ static void set_eq_menu(void) {
     lcd_update();
 }
 
+static void draw_triangle_up(int x, int y) {
+    LCD_DrawPixel(&lcd, x, y, 1);
+    LCD_DrawPixel(&lcd, x - 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x, y + 1, 1);
+    LCD_DrawPixel(&lcd, x + 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x - 2, y + 2, 1);
+    LCD_DrawPixel(&lcd, x - 1, y + 2, 1);
+    LCD_DrawPixel(&lcd, x, y + 2, 1);
+    LCD_DrawPixel(&lcd, x + 1, y + 2, 1);
+    LCD_DrawPixel(&lcd, x + 2, y + 2, 1);
+}
+
+static void draw_triangle_down(int x, int y) {
+    LCD_DrawPixel(&lcd, x - 2, y, 1);
+    LCD_DrawPixel(&lcd, x - 1, y, 1);
+    LCD_DrawPixel(&lcd, x, y, 1);
+    LCD_DrawPixel(&lcd, x + 1, y, 1);
+    LCD_DrawPixel(&lcd, x + 2, y, 1);
+    LCD_DrawPixel(&lcd, x - 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x, y + 1, 1);
+    LCD_DrawPixel(&lcd, x + 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x, y + 2, 1);
+}
+
 static void set_myspace_menu(void) {
     lcd_clear();
-    
-    // Автопрокрутка списку на 3 елементи
+
+    // Логіка автопрокрутки списку (всього 7 пунктів, на екрані водночас відображається 3)
     int start_idx = myspace_menu_pointer;
     if (start_idx > 4) {
-        start_idx = 4;
+        start_idx = 4; // Обмеження, щоб список не виходив за нижню межу
     } else if (start_idx > 0) {
         start_idx -= 1;
     }
 
+    // Фіксовані вертикальні координати Y для трьох видимих рядків меню 
+    // (забезпечують рівні симетричні проміжки між рамками)
+    static const int y_offsets[3] = {6, 24, 42};
+
     for (int i = 0; i < 3; i++) {
         int item_idx = start_idx + i;
-        int y_offset = 1 + (i * 21);
-        
+        int y_offset = y_offsets[i]; 
+
+        // Зовнішня рамка для активного (виділеного курсором) пункту меню:
+        // Ширина зменшена до 132 пікселів, щоб ідеально облягати внутрішню рамку (130px)
         if (item_idx == myspace_menu_pointer) {
-            lcd_draw_rectangle(1, y_offset, 150, 20);
+            lcd_draw_rectangle(1, y_offset, 132, 16);
         }
-        lcd_draw_rectangle(2, y_offset + 1, 148, 18);
         
-        lcd_print(myspace_names[item_idx], 6, y_offset + 6, (const uint8_t*)Sinclair_S8x8, 0);
-        
+        // Внутрішня рамка для кожного з трьох рядків:
+        lcd_draw_rectangle(2, y_offset + 1, 130, 14);
+
+        // Вертикальне відцентрування тексту всередині рамки 
+        int text_y = y_offset + 4;
+
+        // Виведення назви налаштування (наприклад, "ROOM", "FRONT L" тощо):
+        lcd_print(myspace_names[item_idx], 6, text_y, (const uint8_t*)Sinclair_S8x8, 0);
+
         char val_str[16];
-        if (item_idx == myspace_menu_pointer && is_myspace_editing) {
-            snprintf(val_str, sizeof(val_str), ">%.2fm<", myspace_distances[item_idx]);
-        } else {
-            snprintf(val_str, sizeof(val_str), " %.2fm ", myspace_distances[item_idx]);
-        }
         
-        lcd_print(val_str, 95, y_offset + 6, (const uint8_t*)Sinclair_S8x8, 0);
+        // Форматування числового значення дистанції:
+        if (item_idx == myspace_menu_pointer && is_myspace_editing) {
+            snprintf(val_str, sizeof(val_str), ">%.1fm<", myspace_distances[item_idx]);
+        } else {
+            snprintf(val_str, sizeof(val_str), " %.1fm ", myspace_distances[item_idx]);
+        }
+
+        // Виведення значення дистанції праворуч у рядку:
+        lcd_print(val_str, 82, text_y, (const uint8_t*)Sinclair_S8x8, 0);
     }
 
-    lcd_draw_rectangle(155, 2, 97, 60);
-    animation_draw(ANIM_CAT4, 160, 8);
+    // Індикатори прокрутки (трикутники) зміщені на X = 67 для центрування відносно нової ширини 132px
+    if (start_idx > 0) {
+        draw_triangle_up(67, 2);  // Верхній трикутник
+    }
+    if (start_idx + 3 < 7) {
+        draw_triangle_down(67, 59); // Нижній трикутник
+    }
 
+    // Великий правий прямокутник (інформаційна панель / блок анімації):
+    lcd_draw_rectangle(142, 2, 111, 60);
+    
+    // Індикатор статусу MUTE у правому верхньому кутку екрана:
     draw_mute_badge(200, 4);
 
+    // Оновлення буфера та виведення зображення на фізичний дисплей
     lcd_update();
 }
 

@@ -219,7 +219,6 @@ void check_system_idle(void) {
                 portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             } else {
                 xTimerStart(sleep_timer, 0);
-                ESP_LOGI(TAG, "Бездіяльність. Таймер сну ЗАПУЩЕНО.");
             }
         }
     } 
@@ -231,7 +230,6 @@ void check_system_idle(void) {
                 portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
             } else {
                 xTimerStop(sleep_timer, 0);
-                ESP_LOGI(TAG, "Активність. Таймер сну ЗУПИНЕНО.");
             }
         }
     }
