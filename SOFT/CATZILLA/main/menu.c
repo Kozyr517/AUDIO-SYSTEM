@@ -1,42 +1,63 @@
+#include <stdio.h>
+#include <stdlib.h> // Для функції abs()
 #include "menu.h"
 #include "lcd.h"
+#include "gp1247ai.h"
 #include "Font16x16.h"
 #include "Sinclair_S8x8.h"
 #include "animation.h"
 #include "esp_timer.h"
 #include "esp_log.h"
 
-static const char *TAG = "MENU_SETTINGS";
+// Глобальний об'єкт дисплея з lcd.c
+extern TypeDef_GP1247AI lcd;
 
-// Зовнішній прапорець стану MUTE з buttons.c
+// Зовнішні змінні з buttons.c / main.c
 extern volatile bool is_muted;
+
+// Зовнішній масив значень MySpace (12 елементів: 0-5 Distance, 6-11 Gain)
+extern float myspace_values[12];
 
 uint8_t menu_pointer = 0;
 uint8_t main_menu_pointer = 0;
 uint8_t filters_menu_pointer = 0;
 uint8_t eq_menu_pointer = 0;
-uint8_t balance_menu_pointer = 0;
 uint8_t phono_menu_pointer = 0;
 
 uint8_t old_menu_pointer = 255;
 uint8_t old_main_menu_pointer = 0;
 uint8_t old_filters_menu_pointer = 0;
 uint8_t old_eq_menu_pointer = 0;
-uint8_t old_balance_menu_pointer = 0;
 uint8_t old_phono_menu_pointer = 0;
 
 static bool old_is_muted = false;
 
+// ==================== НОВІ ЗМІННІ ДЛЯ MY SPACE ====================
+uint8_t myspace_speaker_pointer = 0; // 0..5 (FL, C, SUB, FR, RL, RR)
+uint8_t myspace_param_pointer = 0;   // 0 = DISTANCE, 1 = GAIN
+uint8_t myspace_depth = 1;           // 1 = Вибір динаміка, 2 = Вибір параметра, 3 = Редагування цифри
+
+static uint8_t old_myspace_speaker_pointer = 255;
+static uint8_t old_myspace_param_pointer = 255;
+static uint8_t old_myspace_depth = 255;
+
+// Назви динаміків (відповідають індексам 0-5)
+const char *myspace_speaker_names[6] = {
+    "FRONT L", "CENTER", "SUBBASS", "FRONT R", "REAR L", "REAR R"
+};
+// ==================================================================
+
 // ==================== ЗБЕРЕЖЕНІ НАЛАШТУВАННЯ В RAM ====================
 uint8_t saved_eq_preset  = 0;
 uint8_t saved_filter     = 0;
-uint8_t saved_balance    = 0;
-uint8_t saved_spatial_3d = 0;
-uint8_t saved_night_mode = 0;
+uint8_t saved_spatial    = 0;
+uint8_t saved_sys        = 0;
 
-const char* eq_names[6]      = {"POP", "ROCK", "JAZZ", "SYMPH", "NATURE", "BASS"};
+const char* eq_names[6]      = {"POP", "ROCK", "JAZZ", "SYMPH", "NATURE", "B&T"};
 const char* filter_names[6]  = {"SILK", "PURRITY", "DRIVE", "ATMOS", "VILVET", "DIRECT"};
-const char* balance_names[3] = {"VOL", "L/R", "F/B"};
+const char* spatial_names[2] = {"SURROUND", "MUSIC"};
+const char* sys_names[2]     = {"SYS 2.1", "SYS 5.1"};
+
 
 // Малювання заповненого квадрата/кубика 4x4 пікселі у верхньому правому кутку комірки
 static void draw_active_square(int x, int y) {
@@ -50,25 +71,9 @@ static void draw_active_square(int x, int y) {
 // Малювання плашки MUTE у правому верхньому кутку вікна анімації/інформації
 static void draw_mute_badge(int x, int y) {
     if (is_muted) {
-        // Зовнішній рамковий прямокутник
         lcd_draw_rectangle(x, y, 42, 12);
-        // Заповнений індикатор під текст MUTE
         lcd_print("MUTE", x + 5, y + 2, (const uint8_t*)Sinclair_S8x8, 0);
     }
-}
-
-// ==================== ФУНКЦІЇ ЗБЕРЕЖЕННЯ ТА ЗЧИТУВАННЯ EEPROM ====================
-void eeprom_save_all_settings(void) {
-    ESP_LOGI(TAG, "===> EEPROM SAVE: EQ=%d (%s), Filter=%d (%s), Balance=%d (%s), Spatial3D=%s, NightMode=%s", 
-             saved_eq_preset, eq_names[saved_eq_preset], 
-             saved_filter, filter_names[saved_filter], 
-             saved_balance, balance_names[saved_balance],
-             saved_spatial_3d ? "ON" : "OFF",
-             saved_night_mode ? "ON" : "OFF");
-}
-
-void eeprom_load_all_settings(void) {
-    ESP_LOGI(TAG, "EEPROM settings loaded into RAM");
 }
 
 static const uint8_t eq_pop[10]    = {29, 40, 44, 45, 41, 30, 28, 28, 29, 29};
@@ -76,9 +81,9 @@ static const uint8_t eq_rock[10]   = {45, 40, 23, 19, 26, 39, 47, 50, 50, 50};
 static const uint8_t eq_jazz[10]   = {40, 38, 32, 33, 31, 35, 39, 41, 43, 44};
 static const uint8_t eq_symph[10]  = {49, 49, 42, 42, 33, 24, 24, 24, 33, 33};
 static const uint8_t eq_nature[10] = {33, 33, 33, 33, 33, 33, 33, 33, 33, 33};
-static const uint8_t eq_bass[10]   = {48, 48, 48, 42, 35, 25, 18, 15, 14, 14};
+static const uint8_t eq_bnt[10]    = {48, 48, 48, 35, 25, 20, 25, 30, 35, 40};
 
-static const uint8_t* eq_presets[6] = {eq_pop, eq_rock, eq_jazz, eq_symph, eq_nature, eq_bass};
+static const uint8_t* eq_presets[6] = {eq_pop, eq_rock, eq_jazz, eq_symph, eq_nature, eq_bnt};
 
 static void set_main_menu(void) {
     lcd_clear();
@@ -95,27 +100,25 @@ static void set_main_menu(void) {
     lcd_draw_rectangle(2, 23, 90, 18);
     lcd_print("FILTERS", 19, 28, (const uint8_t*)Sinclair_S8x8, 0);
     lcd_draw_rectangle(2, 44, 90, 18);
-    lcd_print("VOLUME/BAL", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print("MY SPACE", 15, 49, (const uint8_t*)Sinclair_S8x8, 0);
+
     lcd_draw_rectangle(96, 2, 90, 18);
-    lcd_print("SPATIAL 3D", 101, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    if (saved_spatial == 0) {
+        lcd_print(spatial_names[0], 109, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    } else {
+        lcd_print(spatial_names[1], 121, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    }
+
     lcd_draw_rectangle(96, 23, 90, 18);
-    lcd_print("NIGHT MOD", 105, 28, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print(sys_names[saved_sys], 113, 28, (const uint8_t*)Sinclair_S8x8, 0);
+
     lcd_draw_rectangle(96, 44, 90, 18);
     lcd_print("PHONO MM", 109, 49, (const uint8_t*)Sinclair_S8x8, 0);
-
-    if (saved_spatial_3d) {
-        draw_active_square(180, 5);
-    }
-    if (saved_night_mode) {
-        draw_active_square(180, 26);
-    }
 
     lcd_draw_rectangle(190, 2, 60, 60);
     animation_draw(ANIM_CAT3, 196, 8);
 
-    // Відображення плашки MUTE над/у блоці анімації
     draw_mute_badge(200, 4);
-
     lcd_update();
 }
 
@@ -153,9 +156,7 @@ static void set_filters_menu(void) {
 
     lcd_draw_rectangle(139, 2, 111, 60);
     animation_draw(ANIM_CAT6, 170, 8);
-
     draw_mute_badge(200, 4);
-
     lcd_update();
 }
 
@@ -195,7 +196,7 @@ static void set_eq_menu(void) {
     lcd_draw_rectangle(56, 23, 56, 18);
     lcd_print("NATURE", 61, 28, (const uint8_t*)Sinclair_S8x8, 0);
     lcd_draw_rectangle(56, 44, 56, 18);
-    lcd_print("BASS", 69, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print("B&T", 71, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
     switch (saved_eq_preset) {
         case 0: draw_active_square(46, 5); break;
@@ -207,38 +208,232 @@ static void set_eq_menu(void) {
     }
 
     lcd_draw_rectangle(115, 2, 137, 60);
-
     draw_mute_badge(200, 4);
-
     lcd_update();
 }
 
-static void set_balance_menu(void) {
+/* 
+Закоментовано, щоб компілятор не видавав попередження. 
+Якщо знадобляться в майбутньому - просто розкоментуй.
+static void draw_triangle_up(int x, int y) {
+    LCD_DrawPixel(&lcd, x, y, 1);
+    LCD_DrawPixel(&lcd, x - 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x, y + 1, 1);
+    LCD_DrawPixel(&lcd, x + 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x - 2, y + 2, 1);
+    LCD_DrawPixel(&lcd, x - 1, y + 2, 1);
+    LCD_DrawPixel(&lcd, x, y + 2, 1);
+    LCD_DrawPixel(&lcd, x + 1, y + 2, 1);
+    LCD_DrawPixel(&lcd, x + 2, y + 2, 1);
+}
+
+static void draw_triangle_down(int x, int y) {
+    LCD_DrawPixel(&lcd, x - 2, y, 1);
+    LCD_DrawPixel(&lcd, x - 1, y, 1);
+    LCD_DrawPixel(&lcd, x, y, 1);
+    LCD_DrawPixel(&lcd, x + 1, y, 1);
+    LCD_DrawPixel(&lcd, x + 2, y, 1);
+    LCD_DrawPixel(&lcd, x - 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x, y + 1, 1);
+    LCD_DrawPixel(&lcd, x + 1, y + 1, 1);
+    LCD_DrawPixel(&lcd, x, y + 2, 1);
+}
+*/
+
+static void draw_mini_cat(int x, int y) {
+    static const uint16_t cat_bmp[9] = {
+        0b10000000001,
+        0b11000000011,
+        0b11100000111,
+        0b10111111101,
+        0b10000000001,
+        0b10100000101,
+        0b10000100001,
+        0b01001110010,
+        0b00111111100 
+    };
+    
+    for (int row = 0; row < 9; row++) {
+        for (int col = 0; col < 11; col++) {
+            if (cat_bmp[row] & (1 << (10 - col))) {
+                lcd_draw_rectangle(x + col, y + row, 1, 1);
+            }
+        }
+    }
+}
+
+// Змінено на відмальовку лише одного пікселя через кожні 3 порожніх (крапкова лінія)
+static void draw_dotted_line(int x0, int y0, int x1, int y1) {
+    int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
+    int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
+    int err = dx + dy, e2;
+    int count = 0;
+
+    while (1) {
+        if (count % 4 == 0) { // Крапочка кожні 4 пікселі
+            lcd_draw_rectangle(x0, y0, 1, 1);
+        }
+        count++;
+        if (x0 == x1 && y0 == y1) break;
+        e2 = 2 * err;
+        if (e2 >= dy) { err += dy; x0 += sx; }
+        if (e2 <= dx) { err += dx; y0 += sy; }
+    }
+}
+
+// Прямі лінії, що розширюються від динаміка (схоже на Wi-Fi)
+static void draw_volume_bars(int speaker_idx) {
+    int cx = 0;       // Центр динаміка по X
+    int y_start = 0;  // Початкова координата Y біля динаміка
+    int y_dir = 1;    // 1 = малюємо вниз (для фронтів), -1 = вверх (для тилів)
+    
+    switch (speaker_idx) {
+        case 0: cx = 155; y_start = 20; y_dir =  1; break; // LF
+        case 1: cx = 185; y_start = 20; y_dir =  1; break; // C
+        case 2: cx = 208; y_start = 20; y_dir =  1; break; // SW
+        case 3: cx = 239; y_start = 20; y_dir =  1; break; // RF
+        case 4: cx = 155; y_start = 43; y_dir = -1; break; // RL
+        case 5: cx = 239; y_start = 43; y_dir = -1; break; // RR
+    }
+    
+    // Малюємо 3 смужки з різною шириною (3, 7, 11 пікселів)
+    for (int i = 0; i < 3; i++) {
+        int width = 3 + (i * 4); 
+        int x = cx - (width / 2);
+        int y = y_start + (i * 4 * y_dir); // Відступ у 4 пікселі між смужками
+        lcd_draw_rectangle(x, y, width, 1);
+    }
+}
+
+static void set_myspace_menu(void) {
     lcd_clear();
-    lcd_print(balance_names[balance_menu_pointer], 118, 4, (const uint8_t*)Sinclair_S8x8, 0);
-    switch (balance_menu_pointer) {
-        case 0: lcd_draw_rectangle(1, 1, 112, 20); break;
-        case 1: lcd_draw_rectangle(1, 22, 112, 20); break;
-        case 2: lcd_draw_rectangle(1, 43, 112, 20); break;
-    }
-    lcd_draw_rectangle(2, 2, 110, 18);
-    lcd_print("MASTER VOLUME", 11, 7, (const uint8_t*)Sinclair_S8x8, 0);
-    lcd_draw_rectangle(2, 23, 110, 18);
-    lcd_print("BALANCE LEFT/RIGHT", 7, 28, (const uint8_t*)Sinclair_S8x8, 0);
-    lcd_draw_rectangle(2, 44, 110, 18);
-    lcd_print("BALANCE FRONT/BACK", 7, 49, (const uint8_t*)Sinclair_S8x8, 0);
+    char val_str[24]; // Буфер для тексту
 
-    switch (saved_balance) {
-        case 0: draw_active_square(106, 5); break;
-        case 1: draw_active_square(106, 26); break;
-        case 2: draw_active_square(106, 47); break;
+    // Отримуємо поточні значення для обраного динаміка
+    float dist_val = myspace_values[myspace_speaker_pointer];       // Індекси 0..5
+    float gain_val = myspace_values[myspace_speaker_pointer + 6];   // Індекси 6..11
+
+    // Прапорець для блимання (змінює стан кожні 400 мс)
+    bool blink = (xTaskGetTickCount() / pdMS_TO_TICKS(400)) % 2 == 0;
+
+    // ==========================================
+    // ЛІВИЙ БЛОК: Загальна рамка та параметри
+    // ==========================================
+    
+    // Одна велика рамка, за висотою як схема кімнати (Y=2, H=60)
+    lcd_draw_rectangle(1, 2, 138, 60); 
+
+    // 1. Рядок ВИБОРУ ДИНАМІКА (Y = 8)
+    lcd_print("SPEAKER:", 8, 8, (const uint8_t*)Sinclair_S8x8, 0);
+    
+    // Блимання назви динаміка, якщо ми на рівні 0
+    if (myspace_depth != 0 || blink) {
+        lcd_print(myspace_speaker_names[myspace_speaker_pointer], 75, 8, (const uint8_t*)Sinclair_S8x8, 0);
+    }
+    
+    // Пунктирна лінія-розділювач під динаміком (статична)
+    for(int x = 2; x < 138; x += 4) {
+        LCD_DrawPixel(&lcd, x, 20, 1);
     }
 
-    lcd_draw_rectangle(115, 2, 137, 60);
-    animation_draw(ANIM_CAT4, 160, 8);
+    // 2. Рядок ГУЧНОСТІ (Y = 26)
+    lcd_print("VOLUME:", 8, 29, (const uint8_t*)Sinclair_S8x8, 0);
+    
+    char left_cur_gain = ' ';
+    char right_cur_gain = ' ';
+    
+    if (myspace_depth >= 1 && myspace_param_pointer == 1) {
+        // Якщо параметр обрано (Рівень 1) або редагується (Рівень 2 + блимання)
+        if (myspace_depth == 1 || (myspace_depth == 2 && blink)) {
+            left_cur_gain = '>';
+            right_cur_gain = '<';
+        }
+    }
+    snprintf(val_str, sizeof(val_str), "%c%+2.1fdB%c", left_cur_gain, gain_val, right_cur_gain);
+    lcd_print(val_str, 68, 29, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // 3. Рядок ДИСТАНЦІЇ (Y = 44)
+    lcd_print("RANGE:", 8, 47, (const uint8_t*)Sinclair_S8x8, 0);
+    
+    char left_cur_dist = ' ';
+    char right_cur_dist = ' ';
+    
+    if (myspace_depth >= 1 && myspace_param_pointer == 0) {
+        // Якщо параметр обрано (Рівень 1) або редагується (Рівень 2 + блимання)
+        if (myspace_depth == 1 || (myspace_depth == 2 && blink)) {
+            left_cur_dist = '>';
+            right_cur_dist = '<';
+        }
+    }
+    snprintf(val_str, sizeof(val_str), "%c%.1fm%c", left_cur_dist, dist_val, right_cur_dist);
+    lcd_print(val_str, 70, 47, (const uint8_t*)Sinclair_S8x8, 0);
+
+
+    // ==========================================
+    // ПРАВИЙ БЛОК: Схема приміщення 5.1
+    // ==========================================
+    lcd_draw_rectangle(142, 2, 111, 60); // Основна рамка кімнати
+
+    lcd_draw_rectangle(146, 5, 19, 13);  lcd_print("LF", 149, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_draw_rectangle(176, 5, 19, 13);  lcd_print("C",  182, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_draw_rectangle(199, 5, 19, 13);  lcd_print("SW", 201, 7, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_draw_rectangle(230, 5, 19, 13);  lcd_print("RF", 232, 7, (const uint8_t*)Sinclair_S8x8, 0);
+
+    draw_mini_cat(192, 42);
+
+    lcd_draw_rectangle(146, 46, 19, 13); lcd_print("RL", 148, 48, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_draw_rectangle(230, 46, 19, 13); lcd_print("RR", 232, 48, (const uint8_t*)Sinclair_S8x8, 0);
+
+    // ==========================================
+    // АНІМАЦІЇ ВИДІЛЕННЯ КВАДРАТІВ ДИНАМІКІВ ТА ПАРАМЕТРІВ
+    // ==========================================
+    
+    // Визначаємо координати для зовнішньої рамки виділеного динаміка (ПРАВИЛЬНІ КООРДИНАТИ)
+    int fx = 0, fy = 0;
+    switch (myspace_speaker_pointer) {
+        case 0: fx = 144; fy = 3;  break; // LF
+        case 1: fx = 174; fy = 3;  break; // C
+        case 2: fx = 197; fy = 3;  break; // SW
+        case 3: fx = 228; fy = 3;  break; // RF
+        case 4: fx = 144; fy = 44; break; // RL
+        case 5: fx = 228; fy = 44; break; // RR
+    }
+
+    if (myspace_depth == 0) {
+        // Рівень 0: обираємо динамік - рамка БЛИМАЄ
+        if (blink) {
+            lcd_draw_rectangle(fx, fy, 23, 17); 
+        }
+    } 
+    else if (myspace_depth >= 1) {
+        // Рівень 1 і 2: динамік обрано, рамка ГОРИТЬ ПОСТІЙНО
+        lcd_draw_rectangle(fx, fy, 23, 17);
+
+        // Логіка підсвічування анімації: постійно на рівні 1, блимає на рівні 2
+        bool show_param_anim = true;
+        if (myspace_depth == 2 && !blink) {
+            show_param_anim = false;
+        }
+
+        if (show_param_anim) {
+            if (myspace_param_pointer == 1) {
+                // Гучність: малюємо прямі хвилі типу Wi-Fi
+                draw_volume_bars(myspace_speaker_pointer);
+            } else if (myspace_param_pointer == 0) {
+                // Дистанція: малюємо крапковану лінію до центру (ОНОВЛЕНО ЛІНІЇ)
+                switch (myspace_speaker_pointer) {
+                    case 0: draw_dotted_line(155, 21, 192, 42); break; // LF
+                    case 1: draw_dotted_line(185, 21, 196, 40); break; // C
+                    case 2: draw_dotted_line(208, 21, 198, 40); break; // SW
+                    case 3: draw_dotted_line(239, 21, 202, 42); break; // RF
+                    case 4: draw_dotted_line(168, 47, 190, 47); break; // RL (строго горизонтально)
+                    case 5: draw_dotted_line(227, 47, 204, 47); break; // RR (строго горизонтально)
+                }
+            }
+        }
+    }
 
     draw_mute_badge(200, 4);
-
     lcd_update();
 }
 
@@ -261,7 +456,6 @@ static void set_phono_menu(void) {
     animation_draw(ANIM_CAT5, 178, 8);
 
     draw_mute_badge(200, 4);
-
     lcd_update();
 }
 
@@ -273,9 +467,11 @@ void menu_update(void) {
                          main_menu_pointer != old_main_menu_pointer ||
                          filters_menu_pointer != old_filters_menu_pointer || 
                          eq_menu_pointer != old_eq_menu_pointer || 
-                         balance_menu_pointer != old_balance_menu_pointer || 
                          phono_menu_pointer != old_phono_menu_pointer ||
-                         is_muted != old_is_muted); // Реакція на увімкнення/вимкнення MUTE
+                         is_muted != old_is_muted ||
+                         myspace_speaker_pointer != old_myspace_speaker_pointer ||
+                         myspace_param_pointer != old_myspace_param_pointer ||
+                         myspace_depth != old_myspace_depth); 
 
     if (menu_changed || (now - last_anim_time >= 100)) {
         last_anim_time = now;
@@ -284,15 +480,17 @@ void menu_update(void) {
         old_filters_menu_pointer = filters_menu_pointer;
         old_main_menu_pointer = main_menu_pointer;
         old_menu_pointer = menu_pointer;
-        old_balance_menu_pointer = balance_menu_pointer;
         old_phono_menu_pointer = phono_menu_pointer;
         old_is_muted = is_muted;
+        old_myspace_speaker_pointer = myspace_speaker_pointer;
+        old_myspace_param_pointer = myspace_param_pointer;
+        old_myspace_depth = myspace_depth;
 
         switch (menu_pointer) {
             case MAIN_MENU_NUM:    set_main_menu(); break;
             case FILTERS_MENU_NUM: set_filters_menu(); break;
             case EQ_MENU_NUM:      set_eq_menu(); break;
-            case BALANCE_MENU_NUM: set_balance_menu(); break;
+            case MYSPACE_MENU_NUM: set_myspace_menu(); break;
             case PHONO_MENU_NUM:   set_phono_menu(); break;    
         }
     }
