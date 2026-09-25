@@ -43,7 +43,7 @@ static uint8_t old_myspace_depth = 255;
 
 // Назви динаміків (відповідають індексам 0-5)
 const char *myspace_speaker_names[6] = {
-    "FRONT L", "CENTER", "SUBWOOFER", "FRONT R", "REAR L", "REAR R"
+    "FRONT L", "CENTER", "SUBBASS", "FRONT R", "REAR L", "REAR R"
 };
 // ==================================================================
 
@@ -262,14 +262,15 @@ static void draw_mini_cat(int x, int y) {
     }
 }
 
-static void draw_dashed_line(int x0, int y0, int x1, int y1) {
+// Змінено на відмальовку лише одного пікселя через кожні 3 порожніх (крапкова лінія)
+static void draw_dotted_line(int x0, int y0, int x1, int y1) {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     int err = dx + dy, e2;
     int count = 0;
 
     while (1) {
-        if (count % 3 != 0) { 
+        if (count % 4 == 0) { // Крапочка кожні 4 пікселі
             lcd_draw_rectangle(x0, y0, 1, 1);
         }
         count++;
@@ -280,40 +281,27 @@ static void draw_dashed_line(int x0, int y0, int x1, int y1) {
     }
 }
 
-static void draw_sound_wave(int speaker_idx) {
+// Прямі лінії, що розширюються від динаміка (схоже на Wi-Fi)
+static void draw_volume_bars(int speaker_idx) {
+    int cx = 0;       // Центр динаміка по X
+    int y_start = 0;  // Початкова координата Y біля динаміка
+    int y_dir = 1;    // 1 = малюємо вниз (для фронтів), -1 = вверх (для тилів)
+    
     switch (speaker_idx) {
-        case 0: // FRONT L
-            lcd_draw_rectangle(167, 16, 1, 3);
-            lcd_draw_rectangle(168, 15, 2, 1);
-            lcd_draw_rectangle(171, 19, 1, 4);
-            lcd_draw_rectangle(172, 18, 3, 1);
-            break;
-        case 1: // CENTER
-            lcd_draw_rectangle(181, 21, 9, 1);
-            lcd_draw_rectangle(179, 25, 13, 1);
-            break;
-        case 2: // SUBWOOFER
-            lcd_draw_rectangle(204, 21, 9, 1);
-            lcd_draw_rectangle(202, 25, 13, 1);
-            break;
-        case 3: // FRONT R
-            lcd_draw_rectangle(227, 16, 1, 3);
-            lcd_draw_rectangle(225, 15, 2, 1);
-            lcd_draw_rectangle(223, 19, 1, 4);
-            lcd_draw_rectangle(220, 18, 3, 1);
-            break;
-        case 4: // REAR L
-            lcd_draw_rectangle(167, 45, 1, 3);
-            lcd_draw_rectangle(168, 48, 2, 1);
-            lcd_draw_rectangle(171, 41, 1, 4);
-            lcd_draw_rectangle(172, 45, 3, 1);
-            break;
-        case 5: // REAR R
-            lcd_draw_rectangle(227, 45, 1, 3);
-            lcd_draw_rectangle(225, 48, 2, 1);
-            lcd_draw_rectangle(223, 41, 1, 4);
-            lcd_draw_rectangle(220, 45, 3, 1);
-            break;
+        case 0: cx = 155; y_start = 20; y_dir =  1; break; // LF
+        case 1: cx = 185; y_start = 20; y_dir =  1; break; // C
+        case 2: cx = 208; y_start = 20; y_dir =  1; break; // SW
+        case 3: cx = 239; y_start = 20; y_dir =  1; break; // RF
+        case 4: cx = 155; y_start = 43; y_dir = -1; break; // RL
+        case 5: cx = 239; y_start = 43; y_dir = -1; break; // RR
+    }
+    
+    // Малюємо 3 смужки з різною шириною (3, 7, 11 пікселів)
+    for (int i = 0; i < 3; i++) {
+        int width = 3 + (i * 4); 
+        int x = cx - (width / 2);
+        int y = y_start + (i * 4 * y_dir); // Відступ у 4 пікселі між смужками
+        lcd_draw_rectangle(x, y, width, 1);
     }
 }
 
@@ -336,11 +324,11 @@ static void set_myspace_menu(void) {
     lcd_draw_rectangle(1, 2, 138, 60); 
 
     // 1. Рядок ВИБОРУ ДИНАМІКА (Y = 8)
-    lcd_print("SPK:", 6, 8, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print("SPEAKER:", 8, 8, (const uint8_t*)Sinclair_S8x8, 0);
     
     // Блимання назви динаміка, якщо ми на рівні 0
     if (myspace_depth != 0 || blink) {
-        lcd_print(myspace_speaker_names[myspace_speaker_pointer], 45, 8, (const uint8_t*)Sinclair_S8x8, 0);
+        lcd_print(myspace_speaker_names[myspace_speaker_pointer], 75, 8, (const uint8_t*)Sinclair_S8x8, 0);
     }
     
     // Пунктирна лінія-розділювач під динаміком (статична)
@@ -349,7 +337,7 @@ static void set_myspace_menu(void) {
     }
 
     // 2. Рядок ГУЧНОСТІ (Y = 26)
-    lcd_print("GAIN:", 6, 26, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print("VOLUME:", 8, 29, (const uint8_t*)Sinclair_S8x8, 0);
     
     char left_cur_gain = ' ';
     char right_cur_gain = ' ';
@@ -361,11 +349,11 @@ static void set_myspace_menu(void) {
             right_cur_gain = '<';
         }
     }
-    snprintf(val_str, sizeof(val_str), "%c%+2.1f dB%c", left_cur_gain, gain_val, right_cur_gain);
-    lcd_print(val_str, 50, 26, (const uint8_t*)Sinclair_S8x8, 0);
+    snprintf(val_str, sizeof(val_str), "%c%+2.1fdB%c", left_cur_gain, gain_val, right_cur_gain);
+    lcd_print(val_str, 68, 29, (const uint8_t*)Sinclair_S8x8, 0);
 
     // 3. Рядок ДИСТАНЦІЇ (Y = 44)
-    lcd_print("DIST:", 6, 44, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print("RANGE:", 8, 47, (const uint8_t*)Sinclair_S8x8, 0);
     
     char left_cur_dist = ' ';
     char right_cur_dist = ' ';
@@ -377,8 +365,8 @@ static void set_myspace_menu(void) {
             right_cur_dist = '<';
         }
     }
-    snprintf(val_str, sizeof(val_str), "%c%.1f m %c", left_cur_dist, dist_val, right_cur_dist);
-    lcd_print(val_str, 50, 44, (const uint8_t*)Sinclair_S8x8, 0);
+    snprintf(val_str, sizeof(val_str), "%c%.1fm%c", left_cur_dist, dist_val, right_cur_dist);
+    lcd_print(val_str, 70, 47, (const uint8_t*)Sinclair_S8x8, 0);
 
 
     // ==========================================
@@ -397,16 +385,16 @@ static void set_myspace_menu(void) {
     lcd_draw_rectangle(230, 46, 19, 13); lcd_print("RR", 232, 48, (const uint8_t*)Sinclair_S8x8, 0);
 
     // ==========================================
-    // АНІМАЦІЇ ВИДІЛЕННЯ КВАДРАТІВ ДИНАМІКІВ
+    // АНІМАЦІЇ ВИДІЛЕННЯ КВАДРАТІВ ДИНАМІКІВ ТА ПАРАМЕТРІВ
     // ==========================================
     
-    // Визначаємо координати для зовнішньої рамки виділеного динаміка
+    // Визначаємо координати для зовнішньої рамки виділеного динаміка (ПРАВИЛЬНІ КООРДИНАТИ)
     int fx = 0, fy = 0;
     switch (myspace_speaker_pointer) {
-        case 0: fx = 144; fy = 3; break;  // LF
-        case 1: fx = 174; fy = 3; break;  // C
-        case 2: fx = 197; fy = 3; break;  // SW
-        case 3: fx = 228; fy = 3; break;  // RF
+        case 0: fx = 144; fy = 3;  break; // LF
+        case 1: fx = 174; fy = 3;  break; // C
+        case 2: fx = 197; fy = 3;  break; // SW
+        case 3: fx = 228; fy = 3;  break; // RF
         case 4: fx = 144; fy = 44; break; // RL
         case 5: fx = 228; fy = 44; break; // RR
     }
@@ -414,25 +402,33 @@ static void set_myspace_menu(void) {
     if (myspace_depth == 0) {
         // Рівень 0: обираємо динамік - рамка БЛИМАЄ
         if (blink) {
-            lcd_draw_rectangle(fx, fy, 23, 17); // Рамка на 2px ширша/вища за динамік
+            lcd_draw_rectangle(fx, fy, 23, 17); 
         }
     } 
     else if (myspace_depth >= 1) {
-        // Рівень 1 і 2: динамік обрано, налаштовуємо параметри - рамка ГОРИТЬ ПОСТІЙНО
+        // Рівень 1 і 2: динамік обрано, рамка ГОРИТЬ ПОСТІЙНО
         lcd_draw_rectangle(fx, fy, 23, 17);
 
-        if (myspace_param_pointer == 1) {
-            // Редагуємо гучність - малюємо скобочки (хвилі)
-            draw_sound_wave(myspace_speaker_pointer);
-        } else if (myspace_param_pointer == 0) {
-            // Редагуємо дистанцію - малюємо лінію до центру
-            switch (myspace_speaker_pointer) {
-                case 0: draw_dashed_line(155, 18, 192, 42); break;
-                case 1: draw_dashed_line(185, 18, 196, 40); break;
-                case 2: draw_dashed_line(208, 18, 198, 40); break;
-                case 3: draw_dashed_line(239, 18, 202, 42); break;
-                case 4: draw_dashed_line(166, 52, 190, 48); break;
-                case 5: draw_dashed_line(228, 52, 204, 48); break;
+        // Логіка підсвічування анімації: постійно на рівні 1, блимає на рівні 2
+        bool show_param_anim = true;
+        if (myspace_depth == 2 && !blink) {
+            show_param_anim = false;
+        }
+
+        if (show_param_anim) {
+            if (myspace_param_pointer == 1) {
+                // Гучність: малюємо прямі хвилі типу Wi-Fi
+                draw_volume_bars(myspace_speaker_pointer);
+            } else if (myspace_param_pointer == 0) {
+                // Дистанція: малюємо крапковану лінію до центру (ОНОВЛЕНО ЛІНІЇ)
+                switch (myspace_speaker_pointer) {
+                    case 0: draw_dotted_line(155, 21, 192, 42); break; // LF
+                    case 1: draw_dotted_line(185, 21, 196, 40); break; // C
+                    case 2: draw_dotted_line(208, 21, 198, 40); break; // SW
+                    case 3: draw_dotted_line(239, 21, 202, 42); break; // RF
+                    case 4: draw_dotted_line(168, 47, 190, 47); break; // RL (строго горизонтально)
+                    case 5: draw_dotted_line(227, 47, 204, 47); break; // RR (строго горизонтально)
+                }
             }
         }
     }
