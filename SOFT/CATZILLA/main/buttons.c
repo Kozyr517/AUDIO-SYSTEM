@@ -15,6 +15,7 @@
 #include "app_state.h"
 #include "buttons.h"
 #include "eeprom_24lc128.h" 
+#include "audio_manager.h"
 
 #define MYSPACE_TARGET_COUNT 12
 float myspace_values[MYSPACE_TARGET_COUNT] = {
@@ -326,6 +327,7 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 
                 case FILTERS_MENU_NUM:
                     g_settings.ak4493_filter = filters_menu_pointer;
+                    audio_update_filters(filters_menu_pointer);
                     old_menu_pointer = 255;
                     break;
 

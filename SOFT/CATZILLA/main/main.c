@@ -18,16 +18,16 @@
 #include "i2c_bus.h"
 #include "lcd.h"
 #include "analizator.h"
-#include "animation.h"
-#include "Sinclair_S8x8.h"
 #include "eeprom_24lc128.h"
+#include "screens.h" 
+#include "animation.h"
+#include "audio_manager.h"
 
 static const char *TAG = "MAIN";
 
 // Прототипи функцій
 void sleep_timer_cb(TimerHandle_t xTimer);
 void check_system_idle(void);
-void draw_boot_animation(void);
 
 // ==================== ПІНИ ТА КОНФІГУРАЦІЯ ====================
 #define PIN_VSYS_EN         GPIO_NUM_4
@@ -36,55 +36,42 @@ void draw_boot_animation(void);
 #define PIN_EN_ALL_POWER    GPIO_NUM_21
 #define PIN_EN_ADDR_LED     GPIO_NUM_47
 #define PIN_ADAU_RES        GPIO_NUM_3
-#define PIN_GP9            GPIO_NUM_9
+#define PIN_GP9             GPIO_NUM_9
 
 #define VOL_TIMEOUT_MS      3000
 #define COLUM_SIZE          254
-#define COLUM_FRAME_SKIP    25 
 
 // ==================== ІНІЦІАЛІЗАЦІЯ СТАНУ ====================
 volatile app_state_t current_state = STATE_BOOT;
-uint8_t master_volume = 0; // Значення буде завантажено з EEPROM при старті
+uint8_t master_volume = 0; 
 TickType_t last_vol_activity_tick = 0;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ТА ПРАПОРЦІ ====================
-extern TypeDef_GP1247AI lcd;
-extern volatile uint8_t is_input_sig_flag;    // Прапорець аудіосигналу (0 = немає, 1 = є)
-extern volatile uint8_t button_idle_flag;     // Прапорець активності кнопок (0 = спокій, 1 = натиснута)
+extern volatile uint8_t is_input_sig_flag;    
+extern volatile uint8_t button_idle_flag;     
 
 QueueHandle_t g_fft_process_result_queue = NULL;
-static TimerHandle_t sleep_timer = NULL;     // 10-хвилинний таймер бездіяльності
-
-static uint8_t colum_data[COLUM_SIZE] = {0};
-static uint8_t old_colum[COLUM_SIZE] = {0};
-static uint8_t colum_peak_pos[COLUM_SIZE] = {0};
-static uint8_t colum_timers[COLUM_SIZE] = {0};
-
-// Прапорець для безпечного трекінгу таймера
+static TimerHandle_t sleep_timer = NULL;     
 static volatile bool sleep_timer_running = false;
-
 
 // ==================== УПРАВЛІННЯ ЖИВЛЕННЯМ ПЕРИФЕРІЇ ====================
 
 static void power_on_peripherals(void) {
     gpio_set_level(PIN_EN_ALL_POWER, 1);
-    vTaskDelay(pdMS_TO_TICKS(20)); // Пауза на заряд первинних ємностей
+    vTaskDelay(pdMS_TO_TICKS(50)); 
 
     gpio_set_level(PIN_VSYS_EN, 1);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(pdMS_TO_TICKS(50)); 
 
     gpio_set_level(PIN_EN_POW_ADAU, 1);
     gpio_set_level(PIN_GP9, 1);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     gpio_set_level(PIN_BLE_EN, 1);
     gpio_set_level(PIN_EN_ADDR_LED, 1);
     
-    // Встановлюємо 1 (Active High), щоб зняти ADAU з режиму Reset
     gpio_set_level(PIN_ADAU_RES, 1); 
-
-    // Час для стабілізації живлення
-    vTaskDelay(pdMS_TO_TICKS(100));
+    vTaskDelay(pdMS_TO_TICKS(150)); 
 }
 
 static void power_off_peripherals(void) {
@@ -94,9 +81,8 @@ static void power_off_peripherals(void) {
     gpio_set_level(PIN_GP9, 0);
     gpio_set_level(PIN_BLE_EN, 0);
     gpio_set_level(PIN_EN_ADDR_LED, 0);
-    gpio_set_level(PIN_ADAU_RES, 0); // ADAU утримаємо в Reset
+    gpio_set_level(PIN_ADAU_RES, 0); 
 }
-
 
 // Колбек таймера 10-хвилинної бездіяльності
 void sleep_timer_cb(TimerHandle_t xTimer) {
@@ -108,41 +94,35 @@ static void execute_sleep_sequence(void) {
     ESP_LOGI(TAG, "5 секунд минуло. Відтворення анімації вимкнення...");
     
     TickType_t start_tick = xTaskGetTickCount();
-    const TickType_t anim_duration = pdMS_TO_TICKS(3000); // 3 секунди анімації
+    const TickType_t anim_duration = pdMS_TO_TICKS(3000); 
 
     while ((xTaskGetTickCount() - start_tick) < anim_duration) {
         lcd_clear();
         animation_draw(ANIM_CAT3, 63, 8);
         lcd_update();
-        vTaskDelay(pdMS_TO_TICKS(40)); // ~25 FPS
+        vTaskDelay(pdMS_TO_TICKS(40)); 
     }
 
-    // 2. Даємо час на відтворення анімації
     vTaskDelay(pdMS_TO_TICKS(3000));
 
-    // 3. Очікування відпускання кнопок перед сном
     ESP_LOGI(TAG, "Очікування відпускання кнопок...");
     gpio_num_t btn_pins[] = {PIN_BTN_1, PIN_BTN_2, PIN_BTN_3, PIN_BTN_4};
     bool any_pressed = true;
     while (any_pressed) {
         any_pressed = false;
         for (int i = 0; i < 4; i++) {
-            if (gpio_get_level(btn_pins[i]) == 1) { // 1 = натиснута
+            if (gpio_get_level(btn_pins[i]) == 1) { 
                 any_pressed = true;
                 break;
             }
         }
-        if (any_pressed) {
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
+        if (any_pressed) vTaskDelay(pdMS_TO_TICKS(50));
     }
-    vTaskDelay(pdMS_TO_TICKS(150)); // Дебаунс
+    vTaskDelay(pdMS_TO_TICKS(150)); 
 
-    // 4. Знеструмлюємо периферію
     ESP_LOGW(TAG, "Знеструмлення периферії...");
     power_off_peripherals();
 
-    // 5. Конфігурація пінів для пробудження (HIGH LEVEL)
     for (size_t i = 0; i < 4; i++) {
         gpio_set_direction(btn_pins[i], GPIO_MODE_INPUT);
         gpio_set_pull_mode(btn_pins[i], GPIO_PULLDOWN_ONLY);
@@ -152,23 +132,17 @@ static void execute_sleep_sequence(void) {
     }
     
     esp_sleep_enable_gpio_wakeup();
-
     ESP_LOGI(TAG, "Вхід у Light Sleep. Процесор зупинено.");
     esp_light_sleep_start();
 
-    // =================================================================
-    // === ПРОБУДЖЕННЯ (Режим без рестарту) ===
-    // =================================================================
-    
+    // === ПРОБУДЖЕННЯ ===
     ESP_LOGI(TAG, "Пробудження з Light Sleep. Відновлення роботи...");
 
-    // 1. МИТТЄВО вимикаємо wakeup-переривання
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     for (size_t i = 0; i < 4; i++) {
         gpio_wakeup_disable(btn_pins[i]);
     }
 
-    // 2. Очікуємо, поки користувач ВІДПУСТИТЬ кнопку
     any_pressed = true;
     while (any_pressed) {
         any_pressed = false;
@@ -178,39 +152,22 @@ static void execute_sleep_sequence(void) {
                 break;
             }
         }
-        if (any_pressed) {
-            vTaskDelay(pdMS_TO_TICKS(20)); 
-        }
+        if (any_pressed) vTaskDelay(pdMS_TO_TICKS(20)); 
     }
-    vTaskDelay(pdMS_TO_TICKS(50)); // Дебаунс після відпускання
+    vTaskDelay(pdMS_TO_TICKS(50)); 
 
-    // 3. Повертаємо живлення периферії
     power_on_peripherals();
+    vTaskDelay(pdMS_TO_TICKS(800)); 
 
-    // --- ДОДАНО: ВІДНОВЛЕННЯ НАЛАШТУВАНЬ ПЕРИФЕРІЇ ---
-    // Оскільки живлення знімалося, чіпи (ADAU, AK) скинули свої налаштування.
-    // TODO: Викликати apply_all_settings(), щоб відправити дані з g_settings назад у чіпи.
-    // -------------------------------------------------
-
-    // 4. ВІДНОВЛЮЄМО нормальну роботу драйвера кнопок
-    buttons_init();
-
-    // 5. Відновлення шини дисплея
-    lcd_bus_init(); 
+    // TODO: apply_all_settings()
+    
     lcd_init();
-    vTaskDelay(pdMS_TO_TICKS(120));
-
-    // 6. Першою запускаємо анімацію запуску
-    draw_boot_animation();
-
-    // 7. Відновлюємо аналізатор
+    draw_boot_animation(); 
     analizator_init();
 
-    // 8. Повертаємось у стандартний цикл
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 }
 
-// Безпечна функція перевірки стану бездіяльності
 void check_system_idle(void) {
     if (sleep_timer == NULL) return;
 
@@ -241,81 +198,6 @@ void check_system_idle(void) {
     }
 }
 
-
-// ==================== ГРАФІКА ТА ІНТЕРФЕЙС ====================
-
-void draw_boot_animation(void) {
-    for (int16_t x = -130; x <= 253; x += 6) {
-        lcd_clear();
-        animation_draw(ANIM_CAT1, x, 8);
-        lcd_update();
-        vTaskDelay(pdMS_TO_TICKS(40)); // Затримка для плавної анімації
-    }
-}
-
-void draw_idle_cat2_frame(void) {
-    lcd_clear();
-    animation_draw(ANIM_CAT2, 63, 8);
-    lcd_update();
-}
-
-// Кадр для стану MUTE: котик ANIM_CAT2 + напис "MUTE" у правому верхньому кутку
-void draw_mute_frame(void) {
-    lcd_clear();
-    animation_draw(ANIM_CAT2, 63, 8);
-    // x = 218 залишає відступ у 4 пікселі від правого краю (254 - 32px = 222)
-    lcd_print("MUTE", 218, 2, (const uint8_t*)Sinclair_S8x8, 0);
-    lcd_update();
-}
-
-void draw_spectrum_analyzer_frame(void) {
-    if (xQueueReceive(g_fft_process_result_queue, colum_data, 0) == pdTRUE) {
-        lcd_clear();
-
-        for (size_t i = 0; i < COLUM_SIZE; i++) {
-            if (colum_data[i] > old_colum[i]) {
-                old_colum[i] = colum_data[i];
-                if (colum_data[i] >= colum_peak_pos[i]) {
-                    colum_peak_pos[i] = colum_data[i];
-                    colum_timers[i] = COLUM_FRAME_SKIP;
-                }
-            } else {
-                if (old_colum[i] > 0) old_colum[i]--;
-
-                if (colum_timers[i] > 0) colum_timers[i]--;
-                if (colum_timers[i] == 0 && colum_peak_pos[i] > 0) {
-                    colum_peak_pos[i]--;
-                }
-            }
-        }
-
-        for (size_t i = 0; i < COLUM_SIZE - 1; i++) {
-            lcd_set_dot(i, colum_peak_pos[i]);
-            lcd_draw_colum(i, old_colum[i]);
-        }
-        lcd_update();
-    }
-}
-
-void draw_volume_popup(void) {
-    lcd_clear();
-    lcd_draw_rectangle(28, 10, 198, 44);
-    lcd_draw_rectangle(30, 12, 194, 40);
-
-    char vol_str[16];
-    snprintf(vol_str, sizeof(vol_str), "VOLUME: %d%%", master_volume);
-    lcd_print(vol_str, 85, 18, (const uint8_t*)Sinclair_S8x8, 0);
-
-    uint16_t bar_width = (master_volume * 178) / 100;
-    if (bar_width > 0) {
-        for (uint8_t h = 32; h <= 42; h++) {
-            LCD_DrawFastHLine(&lcd, 38, h, bar_width, 1);
-        }
-    }
-    lcd_update();
-}
-
-
 // ==================== ЗАДАЧА ДИСПЛЕЯ (UI STATE MACHINE) ====================
 
 static void ui_display_task(void *pvParameters) {
@@ -327,6 +209,7 @@ static void ui_display_task(void *pvParameters) {
     while (1) {
         switch (current_state) {
             case STATE_IDLE_CAT2:
+                extern volatile bool is_muted;
                 if (is_muted) {
                     draw_mute_frame();
                     vTaskDelay(pdMS_TO_TICKS(60));
@@ -340,6 +223,7 @@ static void ui_display_task(void *pvParameters) {
                 break;
 
             case STATE_SPECTRUM:
+                extern volatile bool is_muted;
                 if (is_muted) {
                     draw_mute_frame();
                     vTaskDelay(pdMS_TO_TICKS(60));
@@ -353,7 +237,7 @@ static void ui_display_task(void *pvParameters) {
                 break;
 
             case STATE_VOLUME_POPUP:
-                draw_volume_popup();
+                draw_volume_popup(master_volume);
                 if ((xTaskGetTickCount() - last_vol_activity_tick) > pdMS_TO_TICKS(VOL_TIMEOUT_MS)) {
                     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
                 }
@@ -376,16 +260,13 @@ static void ui_display_task(void *pvParameters) {
     }
 }
 
-
 // ==================== MAIN ====================
 
 void app_main(void) {
     ESP_LOGI(TAG, "=== СТАРТ СИСТЕМИ CATZILLA ===");
 
-    // Знімаємо фіксацію пінів після пробудження
     gpio_deep_sleep_hold_dis();
 
-    // Конфігурація ліній живлення та сигналів керування
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_EN_ALL_POWER) | (1ULL << PIN_VSYS_EN) |
                         (1ULL << PIN_BLE_EN) | (1ULL << PIN_EN_POW_ADAU) |
@@ -398,46 +279,31 @@ void app_main(void) {
     };
     gpio_config(&io_conf);
 
-    // Увімкнення живлення
     power_on_peripherals();
 
-    // Створення 10-хвилинного таймера сну (600 000 мс)
     sleep_timer = xTimerCreate("SleepTimer", pdMS_TO_TICKS(600000), pdFALSE, NULL, sleep_timer_cb);
-
-    // Ініціалізація черг та дисплея
     g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
 
-    vTaskDelay(pdMS_TO_TICKS(200)); // Чекаємо готовності матриці
+    vTaskDelay(pdMS_TO_TICKS(800)); 
 
     lcd_bus_init();
     lcd_init();
-
-    // Ініціалізуємо кнопки
     buttons_init();
-
-    // Ініціалізуємо i2C
     i2c_bus_init();
 
     vTaskDelay(pdMS_TO_TICKS(50));
 
-    // --- БЛОК EEPROM ---
     eeprom_init(i2c_bus_handle);
     eeprom_load_settings(&g_settings);
     
-    // Синхронізуємо локальну змінну гучності з пам'яттю
     master_volume = g_settings.adau_main_volume;
     
-    // TODO: Тут у майбутньому буде виклик функції apply_all_settings(),
-    // яка відправить завантажені параметри в чіпи (ADAU1452, AK4493, AK5572)
-    // -------------------
+    // TODO: apply_all_settings()
+    audio_manager_init_all();
 
-    // Запуск аналізатора
     analizator_init();
-
-    // Первинна перевірка стану активності для таймера сну
     check_system_idle();
 
-    // Запуск задач
     xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
     xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
 

@@ -1,22 +1,11 @@
-idf_component_register(
-    SRCS 
-        "main.c" 
-        "buttons.c"
-        "menu.c" 
-        "lcd.c"
-        "analizator.c"
-        "cooling.c"
-        "i2c_bus.c"
-    INCLUDE_DIRS 
-        "."
-    REQUIRES 
-        driver 
-        esp_adc 
-        led_strip 
-        GP1247AI 
-        ds18b20 
-        animation
-        espressif__esp-dsp
-        esp_timer
-        eeprom_24lc128
-)
+idf_component_register(SRCS "main.c" 
+                            "buttons.c" 
+                            "menu.c" 
+                            "lcd.c" 
+                            "analizator.c" 
+                            "cooling.c" 
+                            "i2c_bus.c"
+                            "screens.c"
+                            "audio_manager.c"
+                       INCLUDE_DIRS "."
+                       REQUIRES driver esp_adc led_strip GP1247AI ds18b20 animation espressif__esp-dsp esp_timer eeprom_24lc128 ak4493_dac ak5572_adc)
