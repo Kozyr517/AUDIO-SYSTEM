@@ -20,6 +20,7 @@ esp_err_t i2c_bus_init(void) {
     };
 
     esp_err_t ret = i2c_new_master_bus(&i2c_mst_config, &i2c_bus_handle);
+    
     if (ret == ESP_OK) {
         ESP_LOGI(TAG, "I2C Bus initialized (SCL: GPIO%d, SDA: GPIO%d)", 
                  I2C_MASTER_SCL_IO, I2C_MASTER_SDA_IO);

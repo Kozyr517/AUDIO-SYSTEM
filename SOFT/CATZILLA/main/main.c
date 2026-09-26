@@ -20,7 +20,8 @@
 #include "analizator.h"
 #include "eeprom_24lc128.h"
 #include "screens.h" 
-#include "animation.h" // Повернули для анімації вимкнення
+#include "animation.h"
+#include "audio_manager.h"
 
 static const char *TAG = "MAIN";
 
@@ -298,6 +299,7 @@ void app_main(void) {
     master_volume = g_settings.adau_main_volume;
     
     // TODO: apply_all_settings()
+    audio_manager_init_all();
 
     analizator_init();
     check_system_idle();

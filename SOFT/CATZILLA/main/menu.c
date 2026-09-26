@@ -78,7 +78,7 @@ static const uint8_t eq_rock[10]   = {45, 40, 23, 19, 26, 39, 47, 50, 50, 50};
 static const uint8_t eq_jazz[10]   = {40, 38, 32, 33, 31, 35, 39, 41, 43, 44};
 static const uint8_t eq_symph[10]  = {49, 49, 42, 42, 33, 24, 24, 24, 33, 33};
 static const uint8_t eq_nature[10] = {33, 33, 33, 33, 33, 33, 33, 33, 33, 33};
-static const uint8_t eq_bnt[10]    = {48, 48, 48, 35, 25, 20, 25, 30, 35, 40};
+static const uint8_t eq_bnt[10]    = {48, 45, 40, 35, 25, 20, 25, 30, 35, 40};
 
 static const uint8_t* eq_presets[6] = {eq_pop, eq_rock, eq_jazz, eq_symph, eq_nature, eq_bnt};
 
