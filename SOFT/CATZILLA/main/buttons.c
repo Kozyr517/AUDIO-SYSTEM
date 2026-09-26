@@ -14,6 +14,7 @@
 #include "menu.h"
 #include "app_state.h"
 #include "buttons.h"
+#include "eeprom_24lc128.h" 
 
 #define MYSPACE_TARGET_COUNT 12
 float myspace_values[MYSPACE_TARGET_COUNT] = {
@@ -27,6 +28,7 @@ static const char *TAG_BTN = "BUTTONS";
 extern volatile uint8_t is_input_sig_flag;
 extern void check_system_idle(void);
 extern void sleep_timer_cb(TimerHandle_t xTimer);
+extern uint8_t master_volume; 
 
 // Прапорець активності кнопок та таймер скидання
 volatile uint8_t button_idle_flag = 0;
@@ -42,10 +44,8 @@ void set_mute_state(bool enable_mute) {
     is_muted = enable_mute;
     if (is_muted) {
         // ESP_LOGW(TAG_BTN, "[AUDIO] MUTE УВІМКНЕНО (Звук вимкнено)");
-        // TODO: I2C команда вимкнення звуку на ADAU1452 або реле
     } else {
         // ESP_LOGI(TAG_BTN, "[AUDIO] UNMUTE (Звук відновлено)");
-        // TODO: I2C команда увімкнення звуку на ADAU1452 або реле
     }
 }
 
@@ -57,6 +57,7 @@ void toggle_mute(void) {
 static void button_activity_timer_cb(TimerHandle_t xTimer) {
     button_idle_flag = 0;
     check_system_idle();
+    settings_commit_check(); 
 }
 
 static void mark_button_activity(void) {
@@ -75,11 +76,18 @@ static void mark_button_activity(void) {
 }
 
 static void load_menu_pointers_from_ram(void) {
-    eq_menu_pointer        = saved_eq_preset;
-    filters_menu_pointer   = saved_filter;
+    eq_menu_pointer        = g_settings.adau_eq_preset;
+    filters_menu_pointer   = g_settings.ak4493_filter;
     phono_menu_pointer     = 0;
     
-    // Скидання трирівневого меню MySpace
+    for (int i = 0; i < 6; i++) {
+        // Дистанція: число в EEPROM ділимо на 10
+        myspace_values[i] = (float)g_settings.adau_distances[i] / 10.0f;
+        
+        // Гучність: EEPROM зберігає 24 як 0dB. Формула: (val / 2) - 12.0
+        myspace_values[i + 6] = ((float)g_settings.adau_vol_ch[i] / 2.0f) - 12.0f; 
+    }
+    
     myspace_depth           = 0;
     myspace_speaker_pointer = 0;
     myspace_param_pointer   = 0;
@@ -90,6 +98,8 @@ static void exit_setup_menu(void) {
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
     menu_pointer = MAIN_MENU_NUM;
     old_menu_pointer = 255;
+
+    settings_commit_check();
 }
 
 // ==================== ДАНІ ТА СТРУКТУРИ LED ====================
@@ -168,14 +178,14 @@ static void change_volume(int delta) {
     
     if (new_vol != master_volume) {
         master_volume = (uint8_t)new_vol;
-        // ESP_LOGI(TAG_BTN, "[VOLUME] New Level: %d | Sent Command to DSP", master_volume);
+        g_settings.adau_main_volume = master_volume; 
     }
     
     current_state = STATE_VOLUME_POPUP;
     last_vol_activity_tick = xTaskGetTickCount();
 }
 
-// ==================== ОПРЕОБКА КНОПОК MYSPACE ====================
+// ==================== ОБРОБКА КНОПОК MYSPACE ====================
 static void process_myspace_buttons(uint32_t butt_num) {
     switch (butt_num) {
         case PIN_BTN_1: // Вгору / Збільшення значення
@@ -186,15 +196,19 @@ static void process_myspace_buttons(uint32_t butt_num) {
                         myspace_values[myspace_speaker_pointer] = 10.0f;
                     }
                     myspace_values[myspace_speaker_pointer] = roundf(myspace_values[myspace_speaker_pointer] * 10.0f) / 10.0f;
+                    
+                    g_settings.adau_distances[myspace_speaker_pointer] = (uint8_t)(myspace_values[myspace_speaker_pointer] * 10.0f);
                 } else { // Гучність (GAIN)
                     myspace_values[myspace_speaker_pointer + 6] += 0.50f;
                     if (myspace_values[myspace_speaker_pointer + 6] > 12.0f) {
                         myspace_values[myspace_speaker_pointer + 6] = 12.0f;
                     }
                     myspace_values[myspace_speaker_pointer + 6] = roundf(myspace_values[myspace_speaker_pointer + 6] * 2.0f) / 2.0f;
+                    
+                    // Збереження зі зміщенням у uint8_t: (val + 12.0) * 2
+                    g_settings.adau_vol_ch[myspace_speaker_pointer] = (uint8_t)((myspace_values[myspace_speaker_pointer + 6] + 12.0f) * 2.0f);
                 }
             } else if (myspace_depth == 1) {
-                // Перемикаємо на GAIN (1), оскільки він візуально зверху
                 myspace_param_pointer = 1;
             } else if (myspace_depth == 0) {
                 if (myspace_speaker_pointer > 0) myspace_speaker_pointer--;
@@ -209,15 +223,19 @@ static void process_myspace_buttons(uint32_t butt_num) {
                         myspace_values[myspace_speaker_pointer] = 0.0f;
                     }
                     myspace_values[myspace_speaker_pointer] = roundf(myspace_values[myspace_speaker_pointer] * 10.0f) / 10.0f;
+                    
+                    g_settings.adau_distances[myspace_speaker_pointer] = (uint8_t)(myspace_values[myspace_speaker_pointer] * 10.0f);
                 } else { // Гучність (GAIN)
                     myspace_values[myspace_speaker_pointer + 6] -= 0.50f;
                     if (myspace_values[myspace_speaker_pointer + 6] < -12.0f) {
                         myspace_values[myspace_speaker_pointer + 6] = -12.0f;
                     }
                     myspace_values[myspace_speaker_pointer + 6] = roundf(myspace_values[myspace_speaker_pointer + 6] * 2.0f) / 2.0f;
+                    
+                    // Збереження зі зміщенням у uint8_t: (val + 12.0) * 2
+                    g_settings.adau_vol_ch[myspace_speaker_pointer] = (uint8_t)((myspace_values[myspace_speaker_pointer + 6] + 12.0f) * 2.0f);
                 }
             } else if (myspace_depth == 1) {
-                // Перемикаємо на DIST (0), оскільки він візуально знизу
                 myspace_param_pointer = 0;
             } else if (myspace_depth == 0) {
                 if (myspace_speaker_pointer < 5) myspace_speaker_pointer++;
@@ -227,14 +245,12 @@ static void process_myspace_buttons(uint32_t butt_num) {
         case PIN_BTN_3: // Вибір / Підтвердження (OK)
             if (myspace_depth == 0) {
                 myspace_depth = 1;
-                myspace_param_pointer = 1; // За замовчуванням стаємо на верхній параметр (GAIN)
+                myspace_param_pointer = 1; 
             } else if (myspace_depth == 1) {
                 myspace_depth = 2;
             } else if (myspace_depth == 2) {
-                myspace_depth = 1; // Завершення редагування та повернення до вибору параметрів
+                myspace_depth = 1; 
             }
-            // ESP_LOGI(TAG_BTN, "[MYSPACE] Speaker: %d | Param: %d | Depth: %d", 
-            //          myspace_speaker_pointer, myspace_param_pointer, myspace_depth);
             break;
 
         case PIN_BTN_4: // Назад / Вихід
@@ -248,7 +264,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
             break;
     }
 
-    old_menu_pointer = 255; // Примусове перемальовування дисплея
+    old_menu_pointer = 255; 
 }
 
 // ==================== ЛОГІКА КНОПОК У МЕНЮ ====================
@@ -292,13 +308,11 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                             myspace_param_pointer = 0;
                             break;
                         case 3: 
-                            saved_spatial = !saved_spatial;
-                            // ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Spatial set to: %s", spatial_names[saved_spatial]);
+                            g_settings.adau_surround_mode = !g_settings.adau_surround_mode;
                             old_menu_pointer = 255;
                             break;
                         case 4: 
-                            saved_sys = !saved_sys;
-                            // ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] System Mode set to: %s", sys_names[saved_sys]);
+                            g_settings.sys_mode = !g_settings.sys_mode;
                             old_menu_pointer = 255;
                             break;
                         case 5: menu_pointer = PHONO_MENU_NUM; break;
@@ -306,23 +320,21 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                     break;
 
                 case EQ_MENU_NUM:
-                    saved_eq_preset = eq_menu_pointer;
-                    // ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] EQ Preset: %d (%s)", saved_eq_preset, eq_names[saved_eq_preset]);
+                    g_settings.adau_eq_preset = eq_menu_pointer;
                     old_menu_pointer = 255;
                     break;
 
                 case FILTERS_MENU_NUM:
-                    saved_filter = filters_menu_pointer;
-                    // ESP_LOGI(TAG_BTN, "[SETTING ACTIVATED] Filter: %d (%s)", saved_filter, filter_names[saved_filter]);
+                    g_settings.ak4493_filter = filters_menu_pointer;
                     old_menu_pointer = 255;
                     break;
 
                 case PHONO_MENU_NUM:
                     if (is_long_press) {
                         if (phono_menu_pointer == 0) {
-                            // ESP_LOGI(TAG_BTN, "[ACTION TRIGGERED] ERASE NEEDLE TIME Executed!");
+                            // ERASE NEEDLE TIME
                         } else if (phono_menu_pointer == 1) {
-                            // ESP_LOGI(TAG_BTN, "[ACTION TRIGGERED] ERASE TOTAL TIME Executed!");
+                            // ERASE TOTAL TIME
                         }
                     }
                     break;
@@ -331,7 +343,7 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 
         case PIN_BTN_4: // Назад / Вихід
             if (menu_pointer == MAIN_MENU_NUM) {
-                exit_setup_menu();
+                exit_setup_menu(); // Збереження викликається тут
             } else {
                 menu_pointer = MAIN_MENU_NUM;
                 old_menu_pointer = 255;
@@ -414,7 +426,6 @@ static void button_task(void* arg) {
                     }
 
                     if (is_power_off_hold) {
-                        // ESP_LOGW(TAG_BTN, "PIN_BTN_4 утримано 5 сек. Запуск анімації вимкнення...");
                         current_state = STATE_SLEEP_SHUTDOWN;
                     } else if (!is_mute_triggered) {
                         handle_button_event(PIN_BTN_4, false);
@@ -428,7 +439,6 @@ static void button_task(void* arg) {
                     while (gpio_get_level(PIN_BTN_3) == 1) {
                         TickType_t elapsed = xTaskGetTickCount() - start_hold;
                         
-                        // Якщо пройшло 2 секунди і ми ще не відправили подію
                         if (elapsed >= pdMS_TO_TICKS(2000) && !is_long_press) {
                             is_long_press = true;
                             handle_button_event(io_num, true); // Заходимо в меню ОДРАЗУ
@@ -436,16 +446,13 @@ static void button_task(void* arg) {
                         vTaskDelay(pdMS_TO_TICKS(40));
                     }
                     
-                    // Якщо кнопку відпустили раніше (менше ніж 2 сек) — це коротке натискання
                     if (!is_long_press) {
                         handle_button_event(io_num, false);
                     }
                     
-                    // Оновлюємо час, щоб уникнути спрацьовування від брязкоту контактів при відпусканні
                     last_press_time = xTaskGetTickCount();
                 }
 
-                // Вмикаємо автоповтор для кнопок 1 та 2 не лише поза меню, а й під час зміни значення у MySpace (depth == 2)
                 else if ((io_num == PIN_BTN_1 || io_num == PIN_BTN_2) && 
                         (current_state != STATE_SETUP_MENU || (menu_pointer == MYSPACE_MENU_NUM && myspace_depth == 2))) {
                     handle_button_event(io_num, false);
@@ -475,7 +482,7 @@ static void button_task(void* arg) {
         
         if (current_state == STATE_SETUP_MENU) {
             if ((xTaskGetTickCount() - last_menu_activity_tick) > pdMS_TO_TICKS(MENU_AUTO_EXIT_TIMEOUT_MS)) {
-                exit_setup_menu();
+                exit_setup_menu(); // Збереження викликається тут по таймауту
             }
         }
     }

@@ -18,4 +18,5 @@ idf_component_register(
         animation
         espressif__esp-dsp
         esp_timer
+        eeprom_24lc128
 )
