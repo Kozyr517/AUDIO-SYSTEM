@@ -15,6 +15,7 @@
 #include "cooling.h"
 #include "buttons.h"
 #include "menu.h"
+#include "i2c_bus.h"
 #include "lcd.h"
 #include "analizator.h"
 #include "animation.h"
@@ -401,13 +402,18 @@ void app_main(void) {
     // Ініціалізація черг та дисплея
     g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
 
+    vTaskDelay(pdMS_TO_TICKS(200)); // Чекаємо готовності матриці
+
     lcd_bus_init();
     lcd_init();
 
-    vTaskDelay(pdMS_TO_TICKS(120)); // Чекаємо готовності матриці
-
     // Ініціалізуємо кнопки
     buttons_init();
+
+    // Ініціалізуємо i2C
+    i2c_bus_init();
+
+    vTaskDelay(pdMS_TO_TICKS(50));
 
     // Запуск аналізатора
     analizator_init();
