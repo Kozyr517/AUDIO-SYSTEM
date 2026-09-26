@@ -8,11 +8,12 @@
 #define I2C_MASTER_SDA_IO    7
 #define I2C_MASTER_FREQ_HZ   100000
 
-// Глобальний хендл шини
+// Глобальний хендл шини I2C
 extern i2c_master_bus_handle_t i2c_bus_handle;
 
 /**
  * @brief Ініціалізація шини I2C Master
+ * @return esp_err_t ESP_OK у разі успіху
  */
 esp_err_t i2c_bus_init(void);
 

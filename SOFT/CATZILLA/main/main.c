@@ -15,10 +15,12 @@
 #include "cooling.h"
 #include "buttons.h"
 #include "menu.h"
+#include "i2c_bus.h"
 #include "lcd.h"
 #include "analizator.h"
 #include "animation.h"
 #include "Sinclair_S8x8.h"
+#include "eeprom_24lc128.h"
 
 static const char *TAG = "MAIN";
 
@@ -42,7 +44,7 @@ void draw_boot_animation(void);
 
 // ==================== ІНІЦІАЛІЗАЦІЯ СТАНУ ====================
 volatile app_state_t current_state = STATE_BOOT;
-uint8_t master_volume = 10;
+uint8_t master_volume = 0; // Значення буде завантажено з EEPROM при старті
 TickType_t last_vol_activity_tick = 0;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ТА ПРАПОРЦІ ====================
@@ -105,7 +107,6 @@ void sleep_timer_cb(TimerHandle_t xTimer) {
 static void execute_sleep_sequence(void) {
     ESP_LOGI(TAG, "5 секунд минуло. Відтворення анімації вимкнення...");
     
-    // === ЗАМІНІТЬ ЦЕЙ БЛОК ===
     TickType_t start_tick = xTaskGetTickCount();
     const TickType_t anim_duration = pdMS_TO_TICKS(3000); // 3 секунди анімації
 
@@ -185,6 +186,11 @@ static void execute_sleep_sequence(void) {
 
     // 3. Повертаємо живлення периферії
     power_on_peripherals();
+
+    // --- ДОДАНО: ВІДНОВЛЕННЯ НАЛАШТУВАНЬ ПЕРИФЕРІЇ ---
+    // Оскільки живлення знімалося, чіпи (ADAU, AK) скинули свої налаштування.
+    // TODO: Викликати apply_all_settings(), щоб відправити дані з g_settings назад у чіпи.
+    // -------------------------------------------------
 
     // 4. ВІДНОВЛЮЄМО нормальну роботу драйвера кнопок
     buttons_init();
@@ -401,13 +407,29 @@ void app_main(void) {
     // Ініціалізація черг та дисплея
     g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
 
+    vTaskDelay(pdMS_TO_TICKS(200)); // Чекаємо готовності матриці
+
     lcd_bus_init();
     lcd_init();
 
-    vTaskDelay(pdMS_TO_TICKS(120)); // Чекаємо готовності матриці
-
     // Ініціалізуємо кнопки
     buttons_init();
+
+    // Ініціалізуємо i2C
+    i2c_bus_init();
+
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // --- БЛОК EEPROM ---
+    eeprom_init(i2c_bus_handle);
+    eeprom_load_settings(&g_settings);
+    
+    // Синхронізуємо локальну змінну гучності з пам'яттю
+    master_volume = g_settings.adau_main_volume;
+    
+    // TODO: Тут у майбутньому буде виклик функції apply_all_settings(),
+    // яка відправить завантажені параметри в чіпи (ADAU1452, AK4493, AK5572)
+    // -------------------
 
     // Запуск аналізатора
     analizator_init();

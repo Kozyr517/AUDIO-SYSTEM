@@ -6,6 +6,7 @@ idf_component_register(
         "lcd.c"
         "analizator.c"
         "cooling.c"
+        "i2c_bus.c"
     INCLUDE_DIRS 
         "."
     REQUIRES 
@@ -17,4 +18,5 @@ idf_component_register(
         animation
         espressif__esp-dsp
         esp_timer
+        eeprom_24lc128
 )
