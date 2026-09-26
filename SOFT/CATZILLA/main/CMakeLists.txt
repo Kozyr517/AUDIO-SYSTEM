@@ -7,6 +7,7 @@ idf_component_register(
         "analizator.c"
         "cooling.c"
         "i2c_bus.c"
+        "screens.c"
     INCLUDE_DIRS 
         "."
     REQUIRES 
