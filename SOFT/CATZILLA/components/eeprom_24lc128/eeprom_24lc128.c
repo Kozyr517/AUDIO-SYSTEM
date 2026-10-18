@@ -138,8 +138,8 @@ esp_err_t eeprom_load_settings(app_settings_t *settings) {
         memset(settings, 0, sizeof(app_settings_t));
         settings->magic = SETTINGS_MAGIC;
         
-        settings->ak5572_preset = 0;
-        settings->ak4493_filter = 0;
+        // Встановлюємо дефолтний пресет аудіо на 0 (наприклад, SILK)
+        settings->audio_preset = 0;
 
         settings->adau_main_volume = 10; // Дефолтна загальна гучність
         

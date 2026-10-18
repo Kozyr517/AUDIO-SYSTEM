@@ -9,7 +9,7 @@ static const char *TAG = "AK4493";
 // Локальні хендли трьох ЦАПів
 static i2c_master_dev_handle_t dac_handles[3] = {NULL, NULL, NULL};
 
-// Запис у всі 3 ЦАПи з механізмом повторення для кожного
+// Запис у всі 3 ЦАПи з механізмом повторення
 static void write_reg_all(uint8_t reg, uint8_t data) {
     uint8_t buf[2] = {reg, data};
     
@@ -24,14 +24,13 @@ static void write_reg_all(uint8_t reg, uint8_t data) {
                 
                 if (err == ESP_OK) {
                     success = true;
-                    break; // Успішний запис, переходимо до наступного ЦАПа
+                    break;
                 }
-                
                 vTaskDelay(pdMS_TO_TICKS(5)); 
             }
             
             if (!success) {
-                ESP_LOGE(TAG, "ЦАП %d НЕ ВІДПОВІДАЄ після 3 спроб! Помилка (Регістр 0x%02X): %s", i + 1, reg, esp_err_to_name(err));
+                ESP_LOGE(TAG, "ЦАП %d НЕ ВІДПОВІДАЄ (Регістр 0x%02X): %s", i + 1, reg, esp_err_to_name(err));
             }
         }
     }
@@ -47,29 +46,38 @@ void ak4493_init_all(i2c_master_bus_handle_t bus_handle, const uint8_t *i2c_addr
         i2c_master_bus_add_device(bus_handle, &dev_cfg, &dac_handles[i]);
     }
 
-    // Reg 0x00: 0x9C (ACKS=1 Auto Clock, DIF=111 32-bit I2S, RSTN=0 Reset)
-    write_reg_all(0x00, 0x9C);
+    // Reg 0x00: 0x8E -> ACKS=1 (Auto Clock), PCM Mode (DP=0), 32-bit I2S (DIF=111), RSTN=0 (Reset)
+    write_reg_all(0x00, 0x8E);
     
-    // Reg 0x01: Вибір цифрового фільтра звуку
-    write_reg_all(0x01, initial_filter);
+    // Встановлення цифрового фільтра (розкидає налаштування по регістрах 0x01, 0x02, 0x05)
+    ak4493_set_filter_all(initial_filter);
     
-    // Reg 0x02: Дефолт (Stereo Mode)
-    write_reg_all(0x02, 0x00);
-    
-    // Reg 0x03 & 0x04: Гучність L/R = 0xFF (Максимум, 0 dB). Керуємо гучністю лише через DSP!
+    // Reg 0x03 & 0x04: Гучність L/R = 0xFF (0 dB, максимум)
     write_reg_all(0x03, 0xFF);
     write_reg_all(0x04, 0xFF);
     
-    // Reg 0x07: Режим нормальної роботи модуляторів
-    write_reg_all(0x07, 0x04);
+    // Reg 0x07: Гучність 2.8 Vpp (дефолтна якість)
+    write_reg_all(0x07, 0x00);
 }
 
 void ak4493_start_all(void) {
-    // Reg 0x00: 0x9D (Знімаємо Reset, RSTN=1, починаємо відтворення)
-    write_reg_all(0x00, 0x9D);
+    // Reg 0x00: 0x8F -> Знімаємо Reset (RSTN=1), починаємо відтворення
+    write_reg_all(0x00, 0x8F);
+    ESP_LOGI(TAG, "Усі 3 ЦАПи AK4493 успішно запущені");
 }
 
 void ak4493_set_filter_all(uint8_t filter_bits) {
-    // Оновлення фільтра "на льоту" з меню
-    write_reg_all(0x01, filter_bits);
+    // Розбираємо переданий байт на складові згідно з картою регістрів
+    uint8_t sd    = filter_bits & AK_SD_BIT;
+    uint8_t slow  = (filter_bits & AK_SLOW_BIT) ? 0x01 : 0x00;
+    uint8_t sslow = (filter_bits & AK_SSLOW_BIT) ? 0x01 : 0x00;
+
+    // Reg 0x01 (Control 2): Базове значення 0x02 (DEM = 01 -> De-emphasis OFF) + біт SD
+    write_reg_all(0x01, 0x02 | sd);
+    
+    // Reg 0x02 (Control 3): Базове значення 0x00 + біт SLOW
+    write_reg_all(0x02, slow);
+    
+    // Reg 0x05 (Control 4): Базове значення 0x00 + біт SSLOW
+    write_reg_all(0x05, sslow);
 }

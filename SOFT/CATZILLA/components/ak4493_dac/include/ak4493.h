@@ -4,14 +4,20 @@
 #include <stdint.h>
 #include "driver/i2c_master.h"
 
-#define DAC_FILTER_SHARP_ROLLOFF               0x00
-#define DAC_FILTER_SLOW_ROLLOFF                0x04
-#define DAC_FILTER_SHORT_DELAY_SHARP           0x20
-#define DAC_FILTER_SHORT_DELAY_SLOW            0x24
-#define DAC_FILTER_SUPER_SLOW                  0x01
-#define DAC_FILTER_LOW_DISPERSION_SHORT_DELAY  0x21
+// Внутрішнє кодування бітів для зручного парсингу в .c файлі
+#define AK_SD_BIT    0x20 // Для регістра 0x01
+#define AK_SLOW_BIT  0x02 // Для регістра 0x02
+#define AK_SSLOW_BIT 0x01 // Для регістра 0x05
 
-// Приймаємо масив із 3-х I2C адрес
+// Типи цифрових фільтрів
+#define DAC_FILTER_SHARP_ROLLOFF               0x00
+#define DAC_FILTER_SLOW_ROLLOFF                (AK_SLOW_BIT)
+#define DAC_FILTER_SHORT_DELAY_SHARP           (AK_SD_BIT)
+#define DAC_FILTER_SHORT_DELAY_SLOW            (AK_SD_BIT | AK_SLOW_BIT)
+#define DAC_FILTER_SUPER_SLOW                  (AK_SSLOW_BIT)
+#define DAC_FILTER_LOW_DISPERSION_SHORT_DELAY  (AK_SD_BIT | AK_SSLOW_BIT)
+
+// Ініціалізація 3-х ЦАПів
 void ak4493_init_all(i2c_master_bus_handle_t bus_handle, const uint8_t *i2c_addrs, uint8_t initial_filter);
 void ak4493_start_all(void);
 void ak4493_set_filter_all(uint8_t filter_bits);

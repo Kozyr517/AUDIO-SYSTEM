@@ -1,0 +1,82 @@
+import cv2
+import os
+
+
+# ==========================================
+# 1. РОЗБИТТЯ MP4 НА PNG (1.png, 2.png, ...)
+# ==========================================
+def video_to_png(video_path="cat_walk.mp4", output_folder="cat_frames", target_fps=15):
+    if not os.path.exists(video_path):
+        print(f"Помилка: Файл {video_path} не знайдено в корені проєкту!")
+        return
+
+    os.makedirs(output_folder, exist_ok=True)
+    cap = cv2.VideoCapture(video_path)
+
+    original_fps = cap.get(cv2.CAP_PROP_FPS)
+    if original_fps == 0:
+        original_fps = 30
+
+    frame_interval = max(1, int(round(original_fps / target_fps)))
+
+    frame_count = 0
+    file_number = 1
+
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if frame_count % frame_interval == 0:
+            file_name = f"{file_number}.png"
+            file_path = os.path.join(output_folder, file_name)
+            cv2.imwrite(file_path, frame)
+            file_number += 1
+
+        frame_count += 1
+
+    cap.release()
+    print(f"ГОТОВО! Збережено {file_number - 1} кадрів у папку '{output_folder}'.")
+
+
+# ==========================================
+# 2. ЗБИРАННЯ PNG ВІДРЕДАГОВАНИХ НАЗАД У MP4
+# ==========================================
+def png_to_mp4(input_folder="cat_frames", output_video="cat_edited.mp4", fps=15):
+    if not os.path.exists(input_folder):
+        print(f"Помилка: Папка {input_folder} ще не створена!")
+        return
+
+    files = [f for f in os.listdir(input_folder) if f.endswith(".png")]
+    files.sort(key=lambda x: int(os.path.splitext(x)[0]))
+
+    if not files:
+        print("У папці немає PNG-файлів!")
+        return
+
+    first_frame_path = os.path.join(input_folder, files[0])
+    frame = cv2.imread(first_frame_path)
+    height, width, _ = frame.shape
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_video, fourcc, fps, (width, height))
+
+    for file_name in files:
+        file_path = os.path.join(input_folder, file_name)
+        frame = cv2.imread(file_path)
+        out.write(frame)
+
+    out.release()
+    print(f"ГОТОВО! Зібрано нове відео '{output_video}'.")
+
+
+# ==========================================
+# ГОЛОВНИЙ ЗАПУСК
+# ==========================================
+if __name__ == "__main__":
+    # ЕТАП 1: Натисніть "Run", щоб розбити відео на PNG-кадри (15 FPS)
+    video_to_png("cat_walk.mp4", output_folder="cat_frames", target_fps=15)
+
+    # ЕТАП 2: Коли відредагуєте/залишите потрібні PNG в папці 'cat_frames',
+    # закоментуйте рядок вище (поставте #) і розкоментуйте рядок нижче:
+    # png_to_mp4("cat_frames", "cat_edited.mp4", fps=15)

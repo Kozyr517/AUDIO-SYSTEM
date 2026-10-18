@@ -1,0 +1,61 @@
+#include "driver/i2c.h"
+
+// ==================== MAIN ====================
+
+void app_main(void) {
+    ESP_LOGI(TAG, "=== СТАРТ СИСТЕМИ CATZILLA ===");
+
+    gpio_deep_sleep_hold_dis();
+
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << PIN_EN_ALL_POWER) | (1ULL << PIN_VSYS_EN) |
+                        (1ULL << PIN_BLE_EN) | (1ULL << PIN_EN_POW_ADAU) |
+                        (1ULL << PIN_EN_ADDR_LED) | (1ULL << PIN_ADAU_RES) |
+                        (1ULL << PIN_GP9),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
+    power_on_peripherals();
+
+    sleep_timer = xTimerCreate("SleepTimer", pdMS_TO_TICKS(600000), pdFALSE, NULL, sleep_timer_cb);
+    g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
+
+    vTaskDelay(pdMS_TO_TICKS(800)); 
+
+    lcd_bus_init();
+    lcd_init();
+    buttons_init();
+    i2c_bus_init();
+
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    eeprom_init(i2c_bus_handle);
+    eeprom_load_settings(&g_settings);
+    
+    master_volume = g_settings.adau_main_volume;
+    
+    // Ініціалізуємо всі аудіочіпи штатно
+    audio_manager_init_all();
+    vTaskDelay(pdMS_TO_TICKS(200)); 
+
+    // =======================================================
+    // БЛОК ТЮНІНГУ SIGMASTUDIO (Відрізаємо ESP32 від шини I2C)
+    // =======================================================
+    ESP_LOGW(TAG, "ВІДРІЗАЮ ESP32 ВІД I2C. ПІДКЛЮЧАЙ USBi!");
+
+    // Фізично перетворюємо піни I2C на звичайні входи (High-Z)
+    gpio_reset_pin(GPIO_NUM_6); 
+    gpio_reset_pin(GPIO_NUM_7); 
+    gpio_set_direction(GPIO_NUM_6, GPIO_MODE_INPUT);
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT);
+
+    // Намертво зупиняємо виконання тут
+    while(1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    // =======================================================
+}

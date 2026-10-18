@@ -78,7 +78,8 @@ static void mark_button_activity(void) {
 
 static void load_menu_pointers_from_ram(void) {
     eq_menu_pointer        = g_settings.adau_eq_preset;
-    filters_menu_pointer   = g_settings.ak4493_filter;
+    // ВИПРАВЛЕНО: Використовуємо нову універсальну назву пресета
+    filters_menu_pointer   = g_settings.audio_preset; 
     phono_menu_pointer     = 0;
     
     for (int i = 0; i < 6; i++) {
@@ -326,7 +327,8 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                     break;
 
                 case FILTERS_MENU_NUM:
-                    g_settings.ak4493_filter = filters_menu_pointer;
+                    // ВИПРАВЛЕНО: Зберігаємо у нову універсальну змінну та оновлюємо чипи
+                    g_settings.audio_preset = filters_menu_pointer;
                     audio_update_filters(filters_menu_pointer);
                     old_menu_pointer = 255;
                     break;

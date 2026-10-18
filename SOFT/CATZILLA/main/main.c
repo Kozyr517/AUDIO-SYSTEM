@@ -48,7 +48,7 @@ TickType_t last_vol_activity_tick = 0;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ТА ПРАПОРЦІ ====================
 extern volatile uint8_t is_input_sig_flag;    
-extern volatile uint8_t button_idle_flag;     
+extern volatile uint8_t button_idle_flag;    
 
 QueueHandle_t g_fft_process_result_queue = NULL;
 static TimerHandle_t sleep_timer = NULL;     
@@ -70,18 +70,21 @@ static void power_on_peripherals(void) {
     gpio_set_level(PIN_BLE_EN, 1);
     gpio_set_level(PIN_EN_ADDR_LED, 1);
     
-    gpio_set_level(PIN_ADAU_RES, 1); 
+    // ВИПРАВЛЕНО: Нуль відпускає Reset (підтяжка до 3.3В працює, RC-ланцюг заряджається)
+    gpio_set_level(PIN_ADAU_RES, 0); 
     vTaskDelay(pdMS_TO_TICKS(150)); 
 }
 
 static void power_off_peripherals(void) {
+    // ВИПРАВЛЕНО: Одиниця миттєво тягне Reset (PDN) до землі
+    gpio_set_level(PIN_ADAU_RES, 1); 
+    
     gpio_set_level(PIN_EN_ALL_POWER, 0);
     gpio_set_level(PIN_VSYS_EN, 0);
     gpio_set_level(PIN_EN_POW_ADAU, 0);
     gpio_set_level(PIN_GP9, 0);
     gpio_set_level(PIN_BLE_EN, 0);
     gpio_set_level(PIN_EN_ADDR_LED, 0);
-    gpio_set_level(PIN_ADAU_RES, 0); 
 }
 
 // Колбек таймера 10-хвилинної бездіяльності
@@ -157,13 +160,17 @@ static void execute_sleep_sequence(void) {
     vTaskDelay(pdMS_TO_TICKS(50)); 
 
     power_on_peripherals();
+    
+    // Апаратна затримка для стабілізації живлення та відкриття TL431
     vTaskDelay(pdMS_TO_TICKS(800)); 
 
-    // TODO: apply_all_settings()
-    
     lcd_init();
     draw_boot_animation(); 
     analizator_init();
+
+    // ВИПРАВЛЕНО: Повна переініціалізація аудіотракту після сну
+    // Оскільки ЦАПи і АЦП були повністю знеструмлені/скинуті, їхні регістри треба заповнити наново
+    audio_manager_init_all(); 
 
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 }
@@ -279,6 +286,7 @@ void app_main(void) {
     };
     gpio_config(&io_conf);
 
+    // В момент ініціалізації пін одразу виставить 0 завдяки pull_down_en = DISABLE та дефолтному стану GPIO
     power_on_peripherals();
 
     sleep_timer = xTimerCreate("SleepTimer", pdMS_TO_TICKS(600000), pdFALSE, NULL, sleep_timer_cb);
@@ -298,14 +306,24 @@ void app_main(void) {
     
     master_volume = g_settings.adau_main_volume;
     
-    // TODO: apply_all_settings()
+    // Ініціалізуємо всі аудіочіпи штатно
     audio_manager_init_all();
+    vTaskDelay(pdMS_TO_TICKS(200)); 
 
-    analizator_init();
-    check_system_idle();
+    // =======================================================
+    // БЛОК ТЮНІНГУ SIGMASTUDIO (Відрізаємо ESP32 від шини I2C)
+    // =======================================================
+    ESP_LOGW(TAG, "ВІДРІЗАЮ ESP32 ВІД I2C. ПІДКЛЮЧАЙ USBi!");
 
-    xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
-    xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
+    // Фізично перетворюємо піни I2C на звичайні входи (High-Z)
+    gpio_reset_pin(GPIO_NUM_6); 
+    gpio_reset_pin(GPIO_NUM_7); 
+    gpio_set_direction(GPIO_NUM_6, GPIO_MODE_INPUT);
+    gpio_set_direction(GPIO_NUM_7, GPIO_MODE_INPUT);
 
-    ESP_LOGI(TAG, "Система успішно запущена!");
+    // Намертво зупиняємо виконання тут для роботи з програматором
+    while(1) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+    // =======================================================
 }

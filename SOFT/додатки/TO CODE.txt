@@ -1,0 +1,121 @@
+import os
+import glob
+import re
+from PIL import Image
+
+# Налаштування
+FRAME_WIDTH = 130
+FRAME_HEIGHT = 48
+ANIM_NAME = "anim_cat1"  # Назва генеруємих файлів та префікс функцій
+
+
+def get_frame_number(filepath):
+    filename = os.path.basename(filepath)
+    numbers = re.findall(r'\d+', filename)
+    return int(numbers[0]) if numbers else 0
+
+
+def convert_image_to_vfd_bytes(img_path):
+    img = Image.open(img_path).convert("L")
+    img = img.resize((FRAME_WIDTH, FRAME_HEIGHT), Image.Resampling.LANCZOS)
+
+    pixels = img.load()
+    byte_array = []
+
+    for y_byte in range(0, FRAME_HEIGHT, 8):
+        for x in range(FRAME_WIDTH):
+            current_byte = 0
+            for bit in range(8):
+                y = y_byte + bit
+                if y < FRAME_HEIGHT:
+                    if pixels[x, y] < 128:
+                        current_byte |= (1 << bit)
+            byte_array.append(current_byte)
+
+    return byte_array
+
+
+def generate_animation_files():
+    # Шукаємо всі PNG файли прямо в корені проекту
+    frame_files = glob.glob("*.png")
+
+    # Сортуємо за числовим значенням у назві файлу
+    frame_files = sorted(frame_files, key=get_frame_number)
+
+    if not frame_files:
+        print("Помилка: Не знайдено жодного PNG файлу в кореню проекту!")
+        return
+
+    frame_count = len(frame_files)
+    all_frames_data = []
+
+    for idx, file_path in enumerate(frame_files):
+        print(f"Обробка: {file_path}")
+        b_data = convert_image_to_vfd_bytes(file_path)
+        all_frames_data.append((f"{ANIM_NAME}_frame_{idx}", b_data))
+
+    # Генерація .h файлу
+    h_content = f"""#ifndef {ANIM_NAME.upper()}_H
+#define {ANIM_NAME.upper()}_H
+
+#include <stdint.h>
+
+#define {ANIM_NAME.upper()}_FRAME_WIDTH   {FRAME_WIDTH}
+#define {ANIM_NAME.upper()}_FRAME_HEIGHT  {FRAME_HEIGHT}
+#define {ANIM_NAME.upper()}_FRAME_COUNT   {frame_count}
+
+void {ANIM_NAME}_draw(uint16_t x, uint16_t y);
+
+#endif // {ANIM_NAME.upper()}_H
+"""
+
+    # Генерація .c файлу з форматуванням по 12 байтів у рядок
+    c_content = f"""#include "{ANIM_NAME}.h"
+#include "gp1247ai.h"
+
+extern TypeDef_GP1247AI lcd;
+
+"""
+    for name, data in all_frames_data:
+        rows = []
+        for i in range(0, len(data), 12):
+            chunk = data[i:i + 12]
+            row_str = ", ".join([f"0x{b:02X}" for b in chunk])
+            rows.append(f"    {row_str},")
+
+        formatted_bytes = "\n".join(rows)
+        c_content += f"static const uint8_t {name}[{len(data)}] = {{\n{formatted_bytes}\n}};\n\n"
+
+    c_content += f"static const uint8_t* const {ANIM_NAME}_frames[{frame_count}] = {{\n"
+    for name, _ in all_frames_data:
+        c_content += f"    {name},\n"
+    c_content += "};\n\n"
+
+    c_content += f"""void {ANIM_NAME}_draw(uint16_t x, uint16_t y) {{
+    static uint8_t current_frame = 0;
+    static uint8_t delay_counter = 0;
+    const uint8_t FRAME_HOLD_COUNT = 6;
+
+    const uint8_t *frame_bitmap = {ANIM_NAME}_frames[current_frame];
+
+    LCD_DrawBitmap(&lcd, x, y, frame_bitmap, {FRAME_WIDTH}, {FRAME_HEIGHT}, 1);
+
+    delay_counter++;
+    if (delay_counter >= FRAME_HOLD_COUNT) {{
+        delay_counter = 0;
+        current_frame = (current_frame + 1) % {frame_count};
+    }}
+}}
+"""
+
+    with open(f"{ANIM_NAME}.h", "w", encoding="utf-8") as f:
+        f.write(h_content)
+
+    with open(f"{ANIM_NAME}.c", "w", encoding="utf-8") as f:
+        f.write(c_content)
+
+    print(f"Успішно згенеровано {ANIM_NAME}.h та {ANIM_NAME}.c для {frame_count} кадрів!")
+
+
+if __name__ == "__main__":
+    generate_animation_files()
