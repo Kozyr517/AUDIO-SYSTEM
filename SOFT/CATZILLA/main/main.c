@@ -48,7 +48,7 @@ TickType_t last_vol_activity_tick = 0;
 
 // ==================== ГЛОБАЛЬНІ ЗМІННІ ТА ПРАПОРЦІ ====================
 extern volatile uint8_t is_input_sig_flag;    
-extern volatile uint8_t button_idle_flag;    
+extern volatile uint8_t button_idle_flag;     
 
 QueueHandle_t g_fft_process_result_queue = NULL;
 static TimerHandle_t sleep_timer = NULL;     
@@ -57,9 +57,6 @@ static volatile bool sleep_timer_running = false;
 // ==================== УПРАВЛІННЯ ЖИВЛЕННЯМ ПЕРИФЕРІЇ ====================
 
 static void power_on_peripherals(void) {
-    // Тримаємо жорсткий Reset (PDN = GND), поки вмикаються всі лінії живлення
-    gpio_set_level(PIN_ADAU_RES, 1);
-
     gpio_set_level(PIN_EN_ALL_POWER, 1);
     vTaskDelay(pdMS_TO_TICKS(50)); 
 
@@ -73,21 +70,18 @@ static void power_on_peripherals(void) {
     gpio_set_level(PIN_BLE_EN, 1);
     gpio_set_level(PIN_EN_ADDR_LED, 1);
     
-    // Живлення стабільне: відпускаємо Reset (0 = починається зарядка RC-ланцюга TL431 до 3.3В)
-    gpio_set_level(PIN_ADAU_RES, 0); 
+    gpio_set_level(PIN_ADAU_RES, 1); 
     vTaskDelay(pdMS_TO_TICKS(150)); 
 }
 
 static void power_off_peripherals(void) {
-    // Одиниця миттєво тягне Reset (PDN) до землі
-    gpio_set_level(PIN_ADAU_RES, 1); 
-    
     gpio_set_level(PIN_EN_ALL_POWER, 0);
     gpio_set_level(PIN_VSYS_EN, 0);
     gpio_set_level(PIN_EN_POW_ADAU, 0);
     gpio_set_level(PIN_GP9, 0);
     gpio_set_level(PIN_BLE_EN, 0);
     gpio_set_level(PIN_EN_ADDR_LED, 0);
+    gpio_set_level(PIN_ADAU_RES, 0); 
 }
 
 // Колбек таймера 10-хвилинної бездіяльності
@@ -147,7 +141,6 @@ static void execute_sleep_sequence(void) {
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     for (size_t i = 0; i < 4; i++) {
         gpio_wakeup_disable(btn_pins[i]);
-        gpio_set_intr_type(btn_pins[i], GPIO_INTR_POSEDGE);
     }
 
     any_pressed = true;
@@ -166,11 +159,11 @@ static void execute_sleep_sequence(void) {
     power_on_peripherals();
     vTaskDelay(pdMS_TO_TICKS(800)); 
 
+    // TODO: apply_all_settings()
+    
     lcd_init();
     draw_boot_animation(); 
     analizator_init();
-
-    audio_manager_init_all(); 
 
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 }
@@ -274,9 +267,6 @@ void app_main(void) {
 
     gpio_deep_sleep_hold_dis();
 
-    // До конфігурації напрямку виставляємо безпечний стан Reset = 1 (притиснуто до GND)
-    gpio_set_level(PIN_ADAU_RES, 1);
-
     gpio_config_t io_conf = {
         .pin_bit_mask = (1ULL << PIN_EN_ALL_POWER) | (1ULL << PIN_VSYS_EN) |
                         (1ULL << PIN_BLE_EN) | (1ULL << PIN_EN_POW_ADAU) |
@@ -294,7 +284,6 @@ void app_main(void) {
     sleep_timer = xTimerCreate("SleepTimer", pdMS_TO_TICKS(600000), pdFALSE, NULL, sleep_timer_cb);
     g_fft_process_result_queue = xQueueCreate(5, COLUM_SIZE * sizeof(uint8_t));
 
-    // Очікуємо повного відкриття TL431 (~500 мс) із запасом
     vTaskDelay(pdMS_TO_TICKS(800)); 
 
     lcd_bus_init();
@@ -309,61 +298,14 @@ void app_main(void) {
     
     master_volume = g_settings.adau_main_volume;
     
-    // Первинна ініціалізація всіх аудіочипів
+    // TODO: apply_all_settings()
     audio_manager_init_all();
-    vTaskDelay(pdMS_TO_TICKS(200)); 
 
-    // =======================================================
-    // БЛОК ТЮНІНГУ SIGMASTUDIO (Багаторазовий перезапуск по Кнопці 1)
-    // =======================================================
-    // Вимикаємо фонові переривання кнопок, щоб button_task не ліз у шину I2C
-    gpio_intr_disable(PIN_BTN_1);
-    gpio_intr_disable(PIN_BTN_2);
-    gpio_intr_disable(PIN_BTN_3);
-    gpio_intr_disable(PIN_BTN_4);
+    analizator_init();
+    check_system_idle();
 
-    // Чекаємо, поки Кнопка 1 гарантовано в стані 0 після старту живлення
-    while (gpio_get_level(PIN_BTN_1) == 1) {
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-    vTaskDelay(pdMS_TO_TICKS(200));
+    xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
+    xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
 
-    uint32_t reload_count = 0;
-
-    ESP_LOGW(TAG, "==========================================================");
-    ESP_LOGW(TAG, "ШИНА I2C ВІЛЬНА (Open-Drain Idle). ПІДКЛЮЧАЙ USBi ТА ПРОШИВАЙ ADAU1452!");
-    ESP_LOGW(TAG, "Натисни КНОПКУ 1 у будь-який момент для перезапуску ЦАПів/АЦП!");
-    ESP_LOGW(TAG, "==========================================================");
-
-    while (1) {
-        if (gpio_get_level(PIN_BTN_1) == 1) {
-            // Антибрязкіт 60 мс (захист від випадкових наводок на сенсор)
-            vTaskDelay(pdMS_TO_TICKS(60));
-            if (gpio_get_level(PIN_BTN_1) == 1) {
-                reload_count++;
-                ESP_LOGI(TAG, ">>> [Перезапуск #%lu] Кнопку 1 натиснуто! Перезаписую регістри AK5572 та AK4493...", reload_count);
-
-                // Скидаємо стан апаратного контролера I2C після активності програматора USBi
-                if (i2c_bus_handle != NULL) {
-                    i2c_master_bus_reset(i2c_bus_handle);
-                }
-                vTaskDelay(pdMS_TO_TICKS(10));
-
-                // Заново прописуємо регістри і робимо RSTN: 0 -> 1 під клоками ADAU1452
-                audio_manager_init_all();
-
-                ESP_LOGW(TAG, ">>> [Перезапуск #%lu ЗАВЕРШЕНО] ЦАПи та АЦП перезапущено!", reload_count);
-                ESP_LOGW(TAG, "ВІДРІЗАЮ ESP32 ВІД I2C. ПІДКЛЮЧАЙ USBi ТА ПРОШИВАЙ ADAU1452! (Очікую Кнопку 1...)");
-
-                // Чекаємо, поки ти відпустиш палець з кнопки
-                while (gpio_get_level(PIN_BTN_1) == 1) {
-                    vTaskDelay(pdMS_TO_TICKS(50));
-                }
-                vTaskDelay(pdMS_TO_TICKS(300));
-            }
-        }
-
-        vTaskDelay(pdMS_TO_TICKS(30));
-    }
-    // =======================================================
+    ESP_LOGI(TAG, "Система успішно запущена!");
 }

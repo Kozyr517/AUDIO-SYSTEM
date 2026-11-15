@@ -1,0 +1,1320 @@
+Cell Name         = Mute2
+Parameter Name    = MuteHWSlewAlgADAU145X1mute
+Parameter Address = 231
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mute2
+Parameter Name    = MuteHWSlewAlgADAU145X1slew_mode
+Parameter Address = 230
+Parameter Value   = 8330
+Parameter Data :
+0x00, 0x00, 0x20, 0x8A, 
+
+
+
+Cell Name         = Mute1
+Parameter Name    = MuteHWSlewAlgADAU145X2mute
+Parameter Address = 234
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mute1
+Parameter Name    = MuteHWSlewAlgADAU145X2slew_mode
+Parameter Address = 233
+Parameter Value   = 8330
+Parameter Data :
+0x00, 0x00, 0x20, 0x8A, 
+
+
+
+Cell Name         = BASS
+Parameter Name    = SWGainOptADAU145XAlg6target
+Parameter Address = 10923
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = BASS
+Parameter Name    = SWGainOptADAU145XAlg6alpha
+Parameter Address = 10924
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = Delay4
+Parameter Name    = DelaySigma300PMAlg4delay
+Parameter Address = 226
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B2_0
+Parameter Address = 216
+Parameter Value   = 2.68220901489258E-06
+Parameter Data :
+0x00 ,	0x00 ,	0x00 ,	0x2D ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B1_0
+Parameter Address = 217
+Parameter Value   = 5.36441802978516E-06
+Parameter Data :
+0x00 ,	0x00 ,	0x00 ,	0x5A ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B0_0
+Parameter Address = 218
+Parameter Value   = 2.68220901489258E-06
+Parameter Data :
+0x00 ,	0x00 ,	0x00 ,	0x2D ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A2_0
+Parameter Address = 219
+Parameter Value   = -0.99538266658783
+Parameter Data :
+0xFF ,	0x01 ,	0x2E ,	0x9A ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A1_0
+Parameter Address = 220
+Parameter Value   = 1.99537199735641
+Parameter Data :
+0x01 ,	0xFE ,	0xD0 ,	0xB3 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B2_1
+Parameter Address = 221
+Parameter Value   = 2.68220901489258E-06
+Parameter Data :
+0x00 ,	0x00 ,	0x00 ,	0x2D ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B1_1
+Parameter Address = 222
+Parameter Value   = 5.36441802978516E-06
+Parameter Data :
+0x00 ,	0x00 ,	0x00 ,	0x5A ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B0_1
+Parameter Address = 223
+Parameter Value   = 2.68220901489258E-06
+Parameter Data :
+0x00 ,	0x00 ,	0x00 ,	0x2D ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A2_1
+Parameter Address = 224
+Parameter Value   = -0.99538266658783
+Parameter Data :
+0xFF ,	0x01 ,	0x2E ,	0x9A ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A1_1
+Parameter Address = 225
+Parameter Value   = 1.99537199735641
+Parameter Data :
+0x01 ,	0xFE ,	0xD0 ,	0xB3 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B2_2
+Parameter Address = 24678
+Parameter Value   = 0.597396850585938
+Parameter Data :
+0x00 ,	0x98 ,	0xEF ,	0x00 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B1_2
+Parameter Address = 24679
+Parameter Value   = -1.19479364156723
+Parameter Data :
+0xFE ,	0xCE ,	0x22 ,	0x01 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B0_2
+Parameter Address = 24680
+Parameter Value   = 0.597396850585938
+Parameter Data :
+0x00 ,	0x98 ,	0xEF ,	0x00 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A2_2
+Parameter Address = 24681
+Parameter Value   = -0.364044427871704
+Parameter Data :
+0xFF ,	0xA2 ,	0xCD ,	0xFC ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A1_2
+Parameter Address = 24682
+Parameter Value   = 1.0255429148674
+Parameter Data :
+0x01 ,	0x06 ,	0x89 ,	0xFB ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B2_3
+Parameter Address = 24683
+Parameter Value   = 0.597396850585938
+Parameter Data :
+0x00 ,	0x98 ,	0xEF ,	0x00 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B1_3
+Parameter Address = 24684
+Parameter Value   = -1.19479364156723
+Parameter Data :
+0xFE ,	0xCE ,	0x22 ,	0x01 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001B0_3
+Parameter Address = 24685
+Parameter Value   = 0.597396850585938
+Parameter Data :
+0x00 ,	0x98 ,	0xEF ,	0x00 ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A2_3
+Parameter Address = 24686
+Parameter Value   = -0.364044427871704
+Parameter Data :
+0xFF ,	0xA2 ,	0xCD ,	0xFC ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001A1_3
+Parameter Address = 24687
+Parameter Value   = 1.0255429148674
+Parameter Data :
+0x01 ,	0x06 ,	0x89 ,	0xFB ,	
+
+
+
+Cell Name         = Crossover1
+Parameter Name    = CrossoverFilter2WayAlgDPS3001LowInvert
+Parameter Address = 10930
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Nx2-1_3
+Parameter Name    = stereomuxSigma3003vol0
+Parameter Address = 10891
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Nx2-1_3
+Parameter Name    = stereomuxSigma3003slew_mode
+Parameter Address = 52
+Parameter Value   = 8330
+Parameter Data :
+0x00, 0x00, 0x20, 0x8A, 
+
+
+
+Cell Name         = Gain1_2
+Parameter Name    = GainAlgNS145X3gain
+Parameter Address = 235
+Parameter Value   = 0.501187205314636
+Parameter Data :
+0x00, 0x80, 0x4D, 0xCE, 
+
+
+
+Cell Name         = Single 5
+Parameter Name    = SWGainOptADAU145XAlg1target
+Parameter Address = 10915
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Single 5
+Parameter Name    = SWGainOptADAU145XAlg1alpha
+Parameter Address = 10916
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = Single 4
+Parameter Name    = SWGainOptADAU145XAlg2target
+Parameter Address = 10919
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Single 4
+Parameter Name    = SWGainOptADAU145XAlg2alpha
+Parameter Address = 10920
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = Single 3
+Parameter Name    = SWGainOptADAU145XAlg3target
+Parameter Address = 10907
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Single 3
+Parameter Name    = SWGainOptADAU145XAlg3alpha
+Parameter Address = 10908
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = Single 2
+Parameter Name    = SWGainOptADAU145XAlg4target
+Parameter Address = 10903
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Single 2
+Parameter Name    = SWGainOptADAU145XAlg4alpha
+Parameter Address = 10904
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = Single 1
+Parameter Name    = SWGainOptADAU145XAlg5target
+Parameter Address = 10911
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Single 1
+Parameter Name    = SWGainOptADAU145XAlg5alpha
+Parameter Address = 10912
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001hp1_b1
+Parameter Address = 65
+Parameter Data :
+0xFF, 0x00, 0x2A, 0xDD, 
+0x00, 0xFF, 0xD5, 0x23, 
+0xFF, 0x00, 0x55, 0xBB, 
+0xFF, 0x00, 0xA0, 0x75, 
+0x00, 0xFF, 0x5F, 0x8B, 
+0xFF, 0x01, 0x40, 0xE9, 
+0x00, 0x16, 0x19, 0xFB, 
+0x00, 0x28, 0x1C, 0x91, 
+0xFF, 0x3E, 0x36, 0x8C, 
+0x00, 0x07, 0xAE, 0x14, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001Decay
+Parameter Address = 75
+Parameter Value   = 2.08616256713867E-05
+Parameter Data :
+0x00, 0x00, 0x01, 0x5E, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001attack_rate
+Parameter Address = 76
+Parameter Data :
+0x00, 0x00, 0x41, 0x89, 
+0x00, 0x01, 0x47, 0xAE, 
+0x00, 0x03, 0x33, 0x33, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+0x00, 0x06, 0x66, 0x66, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001n10
+Parameter Address = 89
+Parameter Data :
+0x00, 0x00, 0x00, 0x0A, 
+0xFF, 0xFF, 0xFF, 0xFF, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001Freeze
+Parameter Address = 91
+Parameter Value   = 0.3125
+Parameter Data :
+0x00, 0x50, 0x00, 0x00, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001Decay_Freeze
+Parameter Address = 92
+Parameter Value   = 1.72853469848633E-06
+Parameter Data :
+0x00, 0x00, 0x00, 0x1D, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001Output_Level_db
+Parameter Address = 93
+Parameter Value   = -1.66096407175064
+Parameter Data :
+0xFE, 0x56, 0xCB, 0x0F, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001Max_Atten_db
+Parameter Address = 94
+Parameter Value   = -2.49144607782364
+Parameter Data :
+0xFD, 0x82, 0x30, 0x97, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001Max_Gain_db
+Parameter Address = 95
+Parameter Value   = 2.49144607782364
+Parameter Data :
+0x02, 0x7D, 0xCF, 0x69, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001gain_target
+Parameter Address = 96
+Parameter Value   = 1
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = AVC1
+Parameter Name    = AvcAlgSigma3001alpha
+Parameter Address = 97
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delaya
+Parameter Address = 177
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delayb
+Parameter Address = 178
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delayc
+Parameter Address = 179
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delayd
+Parameter Address = 180
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delaye
+Parameter Address = 181
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delayf
+Parameter Address = 182
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delaya2
+Parameter Address = 183
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001delay_rs
+Parameter Address = 184
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f3_a1
+Parameter Address = 186
+Parameter Value   = 0.993476331233978
+Parameter Data :
+0x00, 0xFE, 0x54, 0x77, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f3_b0
+Parameter Address = 188
+Parameter Value   = 0.996738195419312
+Parameter Data :
+0x00, 0xFF, 0x2A, 0x3C, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f3_b1
+Parameter Address = 187
+Parameter Value   = -0.996738195419312
+Parameter Data :
+0xFF, 0x00, 0xD5, 0xC4, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f2_a1
+Parameter Address = 191
+Parameter Value   = 1.99074405431747
+Parameter Data :
+0x01, 0xFD, 0xA1, 0x67, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f2_a2
+Parameter Address = 190
+Parameter Value   = -0.990786671638489
+Parameter Data :
+0xFF, 0x02, 0x5B, 0xCE, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f2_b0
+Parameter Address = 194
+Parameter Value   = 0.99538266658783
+Parameter Data :
+0x00, 0xFE, 0xD1, 0x66, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f2_b1
+Parameter Address = 193
+Parameter Value   = -1.9907653927803
+Parameter Data :
+0xFE, 0x02, 0x5D, 0x33, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f2_b2
+Parameter Address = 192
+Parameter Value   = 0.99538266658783
+Parameter Data :
+0x00, 0xFE, 0xD1, 0x66, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f4_a1
+Parameter Address = 197
+Parameter Value   = 0.986994981765747
+Parameter Data :
+0x00, 0xFC, 0xAB, 0xB4, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f4_b0
+Parameter Address = 196
+Parameter Value   = 0.993497490882874
+Parameter Data :
+0x00, 0xFE, 0x55, 0xDA, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001f4_b1
+Parameter Address = 195
+Parameter Value   = -0.993497490882874
+Parameter Data :
+0xFF, 0x01, 0xAA, 0x26, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001cntr1
+Parameter Address = 209
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001dec_val
+Parameter Address = 206
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001one_by_root2
+Parameter Address = 205
+Parameter Value   = 0.707945823669434
+Parameter Data :
+0x00, 0xB5, 0x3B, 0xF0, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001cntr2
+Parameter Address = 211
+Parameter Value   = 6
+Parameter Data :
+0x00, 0x00, 0x00, 0x06, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001root
+Parameter Address = 207
+Parameter Value   = 2.82842707633972
+Parameter Data :
+0x02, 0xD4, 0x13, 0xCC, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001gain1
+Parameter Address = 200
+Parameter Value   = 0.707945764064789
+Parameter Data :
+0x00, 0xB5, 0x3B, 0xEF, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001gain2
+Parameter Address = 201
+Parameter Value   = 0.158489346504211
+Parameter Data :
+0x00, 0x28, 0x92, 0xC2, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001gain3
+Parameter Address = 202
+Parameter Value   = 0.251188635826111
+Parameter Data :
+0x00, 0x40, 0x4D, 0xE6, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001gain4
+Parameter Address = 203
+Parameter Value   = 0.501187205314636
+Parameter Data :
+0x00, 0x80, 0x4D, 0xCE, 
+
+
+
+Cell Name         = ADIsurround1
+Parameter Name    = ADIsurroundAlgS3001dil
+Parameter Address = 185
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Single 4_2
+Parameter Name    = SWGainOptADAU145XAlg7target
+Parameter Address = 10927
+Parameter Value   = 0.398107171058655
+Parameter Data :
+0x00, 0x65, 0xEA, 0x5A, 
+
+
+
+Cell Name         = Single 4_2
+Parameter Name    = SWGainOptADAU145XAlg7alpha
+Parameter Address = 10928
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x2C, 
+0x00, 0x00, 0x06, 0xD4, 
+
+
+
+Cell Name         = Delay4_2
+Parameter Name    = DelaySigma300PMAlg1delay
+Parameter Address = 228
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Delay4_3
+Parameter Name    = DelaySigma300PMAlg2delay
+Parameter Address = 227
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Delay4_4
+Parameter Name    = DelaySigma300PMAlg3delay
+Parameter Address = 213
+Parameter Value   = 2880
+Parameter Data :
+0x00, 0x00, 0x0B, 0x40, 
+
+
+
+Cell Name         = Delay4_5
+Parameter Name    = DelaySigma300PMAlg5delay
+Parameter Address = 212
+Parameter Value   = 2880
+Parameter Data :
+0x00, 0x00, 0x0B, 0x40, 
+
+
+
+Cell Name         = Delay4_6
+Parameter Name    = DelaySigma300PMAlg6delay
+Parameter Address = 214
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1_slewmode
+Parameter Address = 176
+Parameter Value   = 8330
+Parameter Data :
+0x00, 0x00, 0x20, 0x8A, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_1
+Parameter Address = 24638
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_2
+Parameter Address = 141
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_3
+Parameter Address = 24643
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_4
+Parameter Address = 146
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_5
+Parameter Address = 24648
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_6
+Parameter Address = 151
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_7
+Parameter Address = 24653
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_8
+Parameter Address = 156
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_9
+Parameter Address = 24658
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_10
+Parameter Address = 161
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_11
+Parameter Address = 24663
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_12
+Parameter Address = 166
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_13
+Parameter Address = 24668
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_14
+Parameter Address = 171
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Mid Filter1
+Parameter Name    = EQS300MultiDPHWSlewP1Alg1Targ_B2_15
+Parameter Address = 24673
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_2
+Parameter Name    = SignalDetectAlgS3002time_constant
+Parameter Address = 55
+Parameter Value   = 384000
+Parameter Data :
+0x00, 0x05, 0xDC, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_2
+Parameter Name    = SignalDetectAlgS3002counterdown
+Parameter Address = 56
+Parameter Value   = 1
+Parameter Data :
+0x00, 0x00, 0x00, 0x01, 
+
+
+
+Cell Name         = Signal Detection1_2
+Parameter Name    = SignalDetectAlgS3002threshold
+Parameter Address = 57
+Parameter Value   = 0.000999987125396729
+Parameter Data :
+0x00, 0x00, 0x41, 0x89, 
+
+
+
+Cell Name         = ReadBack1_2
+Parameter Name    = ReadBackAlgNewSigma3002Value
+Parameter Address = 63
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_3
+Parameter Name    = SignalDetectAlgS3003time_constant
+Parameter Address = 45
+Parameter Value   = 384000
+Parameter Data :
+0x00, 0x05, 0xDC, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_3
+Parameter Name    = SignalDetectAlgS3003counterdown
+Parameter Address = 46
+Parameter Value   = 1
+Parameter Data :
+0x00, 0x00, 0x00, 0x01, 
+
+
+
+Cell Name         = Signal Detection1_3
+Parameter Name    = SignalDetectAlgS3003threshold
+Parameter Address = 47
+Parameter Value   = 0.00562340021133423
+Parameter Data :
+0x00, 0x01, 0x70, 0x89, 
+
+
+
+Cell Name         = ReadBack1_3
+Parameter Name    = ReadBackAlgNewSigma3003Value
+Parameter Address = 53
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = DCB2_3
+Parameter Name    = DCBlockAlgDblPrecS3001pole
+Parameter Address = 40
+Parameter Value   = 0.999899983406067
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x72, 
+
+
+
+Cell Name         = DCB2_3
+Parameter Name    = DCBlockAlgDblPrecS3002pole
+Parameter Address = 43
+Parameter Value   = 0.999899983406067
+Parameter Data :
+0x00, 0xFF, 0xF9, 0x72, 
+
+
+
+Cell Name         = ReadBack1_4
+Parameter Name    = ReadBackAlgNewSigma3001Value
+Parameter Address = 64
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_4
+Parameter Name    = SignalDetectAlgS3001time_constant
+Parameter Address = 59
+Parameter Value   = 384000
+Parameter Data :
+0x00, 0x05, 0xDC, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_4
+Parameter Name    = SignalDetectAlgS3001counterdown
+Parameter Address = 60
+Parameter Value   = 1
+Parameter Data :
+0x00, 0x00, 0x00, 0x01, 
+
+
+
+Cell Name         = Signal Detection1_4
+Parameter Name    = SignalDetectAlgS3001threshold
+Parameter Address = 61
+Parameter Value   = 0.000999987125396729
+Parameter Data :
+0x00, 0x00, 0x41, 0x89, 
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1B2_1
+Parameter Address = 32
+Parameter Value   = 0.999825894832611
+Parameter Data :
+0x00 ,	0xFF ,	0xF4 ,	0x97 ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1B1_1
+Parameter Address = 33
+Parameter Value   = -1.99965178966522
+Parameter Data :
+0xFE ,	0x00 ,	0x16 ,	0xD2 ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1B0_1
+Parameter Address = 34
+Parameter Value   = 0.999825894832611
+Parameter Data :
+0x00 ,	0xFF ,	0xF4 ,	0x97 ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1A2_1
+Parameter Address = 35
+Parameter Value   = -0.999651908874512
+Parameter Data :
+0xFF ,	0x00 ,	0x16 ,	0xD0 ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1A1_1
+Parameter Address = 36
+Parameter Value   = 1.99965167045593
+Parameter Data :
+0x01 ,	0xFF ,	0xE9 ,	0x2C ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1B2_2
+Parameter Address = 24583
+Parameter Value   = 0.0849787592887878
+Parameter Data :
+0x00 ,	0x15 ,	0xC1 ,	0x2B ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1B1_2
+Parameter Address = 24584
+Parameter Value   = 0.169957458972931
+Parameter Data :
+0x00 ,	0x2B ,	0x82 ,	0x55 ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1B0_2
+Parameter Address = 24585
+Parameter Value   = 0.0849787592887878
+Parameter Data :
+0x00 ,	0x15 ,	0xC1 ,	0x2B ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1A2_2
+Parameter Address = 24586
+Parameter Value   = -0.644908845424652
+Parameter Data :
+0xFF ,	0x5A ,	0xE7 ,	0x41 ,	
+
+
+
+Cell Name         = Gen Filter1
+Parameter Name    = EQGenFilterDPS300Alg1A1_2
+Parameter Address = 24587
+Parameter Value   = 1.30499392747879
+Parameter Data :
+0x01 ,	0x4E ,	0x14 ,	0x15 ,	
+
+
+
+Cell Name         = Nx2-1_4
+Parameter Name    = stereomuxSigma3001vol0
+Parameter Address = 10898
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Nx2-1_4
+Parameter Name    = stereomuxSigma3001slew_mode
+Parameter Address = 215
+Parameter Value   = 8330
+Parameter Data :
+0x00, 0x00, 0x20, 0x8A, 
+
+
+
+Cell Name         = Nx2-1_5
+Parameter Name    = stereomuxSigma3002vol0
+Parameter Address = 10884
+Parameter Data :
+0x01, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = Nx2-1_5
+Parameter Name    = stereomuxSigma3002slew_mode
+Parameter Address = 37
+Parameter Value   = 8330
+Parameter Data :
+0x00, 0x00, 0x20, 0x8A, 
+
+
+
+Cell Name         = Signal Detection1_5
+Parameter Name    = SignalDetectAlgS3004time_constant
+Parameter Address = 49
+Parameter Value   = 384000
+Parameter Data :
+0x00, 0x05, 0xDC, 0x00, 
+
+
+
+Cell Name         = Signal Detection1_5
+Parameter Name    = SignalDetectAlgS3004counterdown
+Parameter Address = 50
+Parameter Value   = 1
+Parameter Data :
+0x00, 0x00, 0x00, 0x01, 
+
+
+
+Cell Name         = Signal Detection1_5
+Parameter Name    = SignalDetectAlgS3004threshold
+Parameter Address = 51
+Parameter Value   = 0.00562340021133423
+Parameter Data :
+0x00, 0x01, 0x70, 0x89, 
+
+
+
+Cell Name         = ReadBack1_5
+Parameter Name    = ReadBackAlgNewSigma3004Value
+Parameter Address = 62
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = None - Framework
+Parameter Name    = __SafeLoad_Module__data_SafeLoad
+Parameter Address = 24576
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = None - Framework
+Parameter Name    = __SafeLoad_Module__address_SafeLoad
+Parameter Address = 24581
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
+Cell Name         = None - Framework
+Parameter Name    = __SafeLoad_Module__num_SafeLoad
+Parameter Address = 24582
+Parameter Value   = 0
+Parameter Data :
+0x00, 0x00, 0x00, 0x00, 
+
+
+
