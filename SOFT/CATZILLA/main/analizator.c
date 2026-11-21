@@ -146,6 +146,13 @@ void analiz_process(void *argv) {
 }
 
 void analizator_init(void) {
+    static bool s_analizator_initialized = false;
+    if (s_analizator_initialized) {
+        clear_byffer();
+        return;
+    }
+    s_analizator_initialized = true;
+
     esp_err_t ret;
 
     i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_SLAVE);

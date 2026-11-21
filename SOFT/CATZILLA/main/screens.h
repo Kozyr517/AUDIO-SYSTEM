@@ -6,6 +6,7 @@
 
 // Базові екрани та анімації
 void draw_boot_animation(void);
+void draw_shutdown_animation(void);
 void draw_idle_cat2_frame(void);
 void draw_mute_frame(void);
 

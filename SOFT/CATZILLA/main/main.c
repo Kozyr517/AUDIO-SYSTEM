@@ -99,18 +99,12 @@ void sleep_timer_cb(TimerHandle_t xTimer) {
 // Процедура вимкнення та входу в Light Sleep
 static void execute_sleep_sequence(void) {
     ESP_LOGI(TAG, "5 секунд минуло. Відтворення анімації вимкнення...");
-    
-    TickType_t start_tick = xTaskGetTickCount();
-    const TickType_t anim_duration = pdMS_TO_TICKS(3000); 
 
-    while ((xTaskGetTickCount() - start_tick) < anim_duration) {
-        lcd_clear();
-        animation_draw(ANIM_CAT3, 63, 8);
-        lcd_update();
-        vTaskDelay(pdMS_TO_TICKS(40)); 
-    }
+    // Приглушуємо виходи DSP перед анімацією вимкнення та зняттям живлення (запобігає клацанню в акустиці)
+    audio_manager_set_master_mute(true);
 
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    // Математична анімація затухання звукової хвилі в центральну крапку
+    draw_shutdown_animation();
 
     ESP_LOGI(TAG, "Очікування відпускання кнопок...");
     gpio_num_t btn_pins[] = {PIN_BTN_1, PIN_BTN_2, PIN_BTN_3, PIN_BTN_4};
@@ -150,6 +144,8 @@ static void execute_sleep_sequence(void) {
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     for (size_t i = 0; i < 4; i++) {
         gpio_wakeup_disable(btn_pins[i]);
+        // Відновлюємо переривання по фронту, яке скидається викликом gpio_wakeup_disable()
+        gpio_set_intr_type(btn_pins[i], GPIO_INTR_POSEDGE);
     }
 
     any_pressed = true;
@@ -164,6 +160,9 @@ static void execute_sleep_sequence(void) {
         if (any_pressed) vTaskDelay(pdMS_TO_TICKS(20)); 
     }
     vTaskDelay(pdMS_TO_TICKS(50)); 
+
+    // Скидаємо прапорець Mute, який міг увімкнутися на 2-й секунді утримання кнопки вимкнення
+    is_muted = false;
 
     power_on_peripherals();
     vTaskDelay(pdMS_TO_TICKS(800)); 
@@ -216,40 +215,80 @@ static void ui_display_task(void *pvParameters) {
 
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 
+    bool cinema_screen_blanked = false;
+
     while (1) {
         if (current_state != STATE_SLEEP_SHUTDOWN) {
             autosearch_tick_1s();
         }
+
+        // Режим Сінема (SYS 5.1 + SURROUND): вимикаємо екран та всі анімації поза меню/гучністю
+        bool is_cinema_mode = (g_settings.sys_mode != 0 && g_settings.adau_surround_mode == 0);
+
         switch (current_state) {
             case STATE_IDLE_CAT2:
                 extern volatile bool is_muted;
-                if (is_muted) {
-                    draw_mute_frame();
+                if (is_cinema_mode) {
+                    if (!cinema_screen_blanked) {
+                        lcd_clear();
+                        lcd_update();
+                        cinema_screen_blanked = true;
+                    }
+                    if (!is_muted && is_input_sig_flag == 1) {
+                        current_state = STATE_SPECTRUM;
+                        check_system_idle();
+                    }
                     vTaskDelay(pdMS_TO_TICKS(60));
-                } else if (is_input_sig_flag == 1) {
-                    current_state = STATE_SPECTRUM;
-                    check_system_idle();
                 } else {
-                    draw_idle_cat2_frame();
-                    vTaskDelay(pdMS_TO_TICKS(60));
+                    cinema_screen_blanked = false;
+                    if (is_muted) {
+                        draw_mute_frame();
+                        vTaskDelay(pdMS_TO_TICKS(60));
+                    } else if (is_input_sig_flag == 1) {
+                        current_state = STATE_SPECTRUM;
+                        check_system_idle();
+                    } else {
+                        draw_idle_cat2_frame();
+                        vTaskDelay(pdMS_TO_TICKS(60));
+                    }
                 }
                 break;
 
             case STATE_SPECTRUM:
                 extern volatile bool is_muted;
-                if (is_muted) {
-                    draw_mute_frame();
-                    vTaskDelay(pdMS_TO_TICKS(60));
-                } else if (is_input_sig_flag == 0) {
-                    current_state = STATE_IDLE_CAT2;
-                    check_system_idle();
+                if (is_cinema_mode) {
+                    if (!cinema_screen_blanked) {
+                        lcd_clear();
+                        lcd_update();
+                        cinema_screen_blanked = true;
+                    }
+                    // Спустошуємо чергу FFT, щоб не накопичувалась у фоні, але нічого не малюємо
+                    if (g_fft_process_result_queue != NULL) {
+                        uint8_t dummy[COLUM_SIZE];
+                        xQueueReceive(g_fft_process_result_queue, dummy, 0);
+                    }
+                    if (!is_muted && is_input_sig_flag == 0) {
+                        current_state = STATE_IDLE_CAT2;
+                        check_system_idle();
+                    }
+                    vTaskDelay(pdMS_TO_TICKS(50));
                 } else {
-                    draw_spectrum_analyzer_frame();
-                    vTaskDelay(pdMS_TO_TICKS(20));
+                    cinema_screen_blanked = false;
+                    if (is_muted) {
+                        draw_mute_frame();
+                        vTaskDelay(pdMS_TO_TICKS(60));
+                    } else if (is_input_sig_flag == 0) {
+                        current_state = STATE_IDLE_CAT2;
+                        check_system_idle();
+                    } else {
+                        draw_spectrum_analyzer_frame();
+                        vTaskDelay(pdMS_TO_TICKS(20));
+                    }
                 }
                 break;
 
             case STATE_VOLUME_POPUP:
+                cinema_screen_blanked = false;
                 draw_volume_popup(master_volume);
                 if ((xTaskGetTickCount() - last_vol_activity_tick) > pdMS_TO_TICKS(VOL_TIMEOUT_MS)) {
                     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
@@ -258,11 +297,13 @@ static void ui_display_task(void *pvParameters) {
                 break;
 
             case STATE_SETUP_MENU:
+                cinema_screen_blanked = false;
                 menu_update();
                 vTaskDelay(pdMS_TO_TICKS(40));
                 break;
 
             case STATE_SLEEP_SHUTDOWN:
+                cinema_screen_blanked = false;
                 execute_sleep_sequence();
                 break;
 

@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h> // Для функції abs()
+#include <math.h>
 #include "menu.h"
 #include "lcd.h"
 #include "gp1247ai.h"
@@ -53,7 +54,7 @@ const char *myspace_speaker_names[6] = {
 // ==================== ТЕКСТОВІ КОНСТАНТИ ====================
 const char* eq_names[6]      = {"POP", "ROCK", "JAZZ", "SYMPH", "NATURE", "B&T"};
 const char* filter_names[6]  = {"SILK", "PURRITY", "DRIVE", "ATMOS", "VILVET", "DIRECT"};
-const char* spatial_names[2] = {"SURROUND", "MUSIC"};
+const char* spatial_names[2] = {"CINEMA", "MUSIC"};
 const char* sys_names[2]     = {"SYS 2.1", "SYS 5.1"};
 
 
@@ -104,7 +105,7 @@ static void set_main_menu(void) {
     
     // Читаємо режим Spatial: у режимі 2.1 (sys_mode == 0, Nx2-1_4 = 0) завжди відображаємо MUSIC
     if (g_settings.sys_mode != 0 && g_settings.adau_surround_mode == 0) {
-        lcd_print(spatial_names[0], 109, 7, (const uint8_t*)Sinclair_S8x8, 0);
+        lcd_print(spatial_names[0], 117, 7, (const uint8_t*)Sinclair_S8x8, 0);
     } else {
         lcd_print(spatial_names[1], 121, 7, (const uint8_t*)Sinclair_S8x8, 0);
     }
@@ -121,6 +122,132 @@ static void set_main_menu(void) {
 
     draw_mute_badge(200, 4);
     lcd_update();
+}
+
+// Жива математична візуалізація характеру кожного з 6 цифрових фільтрів AK5572 / AK4493
+// Область малювання: x = 141..248 (108 px), y = 4..60 (56 px), центр cy = 32
+static void draw_filter_waveform(uint8_t filter_idx) {
+    const int x0 = 142;
+    const int w  = 105;
+    const int cy = 32;
+    const int y_min = 5;
+    const int y_max = 59;
+
+    float t = (float)(esp_timer_get_time() / 1000) * 0.006f;
+
+    // Тонка пунктирна осьова лінія осцилографа (крім DIRECT, де вісь малює сам імпульс)
+    if (filter_idx != 5) {
+        for (int px = x0; px < x0 + w; px += 6) {
+            LCD_DrawPixel(&lcd, (uint8_t)px, (uint8_t)cy, 1);
+        }
+    }
+
+    int prev_y1 = cy;
+    int prev_y2 = cy;
+
+    for (int i = 0; i < w; i++) {
+        float u = (float)i / (float)(w - 1); // 0.0 .. 1.0
+        float c = (u - 0.5f) * 2.0f;         // -1.0 .. +1.0
+        float env = 1.0f - 0.35f * (c * c);  // М'яке затухання до країв рамки
+        float y1_f = 0.0f;
+        float y2_f = 0.0f;
+        bool draw_second = false;
+        bool second_dotted = false;
+
+        switch (filter_idx) {
+            case 0: // SILK — дві плавні шовкові синусоїди, що перетікають одна в одну
+                y1_f = 18.0f * env * sinf(u * 10.0f - t * 1.4f);
+                y2_f = 13.0f * env * sinf(u * 10.0f - t * 1.4f + 1.15f);
+                draw_second = true;
+                second_dotted = true;
+                break;
+
+            case 1: // PURRITY — чиста еталонна синусоїда високої точності
+                y1_f = 20.0f * sinf(u * 12.56637f - t * 1.6f);
+                break;
+
+            case 2: // DRIVE — енергійна хвиля з крутим фронтом і гармоніками
+                y1_f = 18.5f * env * (sinf(u * 14.0f - t * 3.0f) + 0.38f * sinf(u * 42.0f - t * 9.0f));
+                break;
+
+            case 3: // ATMOS — об'ємна багатошарова хвиля з ефектом простору
+                y1_f = 19.0f * expf(-c * c * 1.8f) * sinf(u * 14.0f - t * 1.8f);
+                y2_f = 15.0f * expf(-c * c * 1.2f) * sinf(u * 9.0f + t * 1.1f);
+                draw_second = true;
+                second_dotted = true;
+                break;
+
+            case 4: { // VILVET — оксамитова 3-шарова стрічка, що м'яко переплітається та дихає
+                float breath = 0.78f + 0.22f * sinf(t * 1.1f);
+                float dome   = expf(-c * c * 1.6f);
+                y1_f = 20.0f * breath * dome * sinf(u * 6.28318f - t * 1.0f);
+                y2_f = 16.0f * breath * dome * sinf(u * 6.28318f - t * 1.0f + 2.1f);
+                draw_second = true;
+                second_dotted = false;
+                // Тонкі «оксамитові» вертикальні штрихи між двома стрічками кожні 6 пікселів
+                if (i % 6 == 0) {
+                    int ya = cy - (int)y1_f;
+                    int yb = cy - (int)y2_f;
+                    if (ya < y_min) ya = y_min;
+                    if (ya > y_max) ya = y_max;
+                    if (yb < y_min) yb = y_min;
+                    if (yb > y_max) yb = y_max;
+                    int ym = (ya + yb) / 2;
+                    LCD_DrawPixel(&lcd, (uint8_t)(x0 + i), (uint8_t)ym, 1);
+                }
+                break;
+            }
+
+            case 5: { // DIRECT — зустрічні імпульси мінімальної фази (суцільний зліва->направо, пунктирний дзеркальний справа->наліво)
+                float pos = fmodf(t * 0.14f, 1.45f) - 0.15f;
+
+                // 1. Основний суцільний імпульс рухається зліва направо по осі
+                float d1 = pos - u;
+                if (d1 < 0.0f) {
+                    y1_f = 0.0f;
+                } else {
+                    y1_f = 23.0f * expf(-d1 * 7.5f) * sinf(d1 * 38.0f);
+                }
+
+                // 2. Дзеркальний пунктирний імпульс рухається назустріч справа наліво (малюється лише сам сплеск, не засмічує вісь)
+                float d2 = u - (1.0f - pos);
+                if (d2 >= 0.0f) {
+                    y2_f = -23.0f * expf(-d2 * 7.5f) * sinf(d2 * 38.0f);
+                    if (fabsf(y2_f) > 1.0f) {
+                        draw_second = true;
+                        second_dotted = true;
+                    }
+                }
+                break;
+            }
+        }
+
+        int y1 = cy - (int)y1_f;
+        if (y1 < y_min) y1 = y_min;
+        if (y1 > y_max) y1 = y_max;
+
+        if (i == 0) {
+            LCD_DrawPixel(&lcd, (uint8_t)(x0 + i), (uint8_t)y1, 1);
+        } else {
+            LCD_DrawLine(&lcd, (uint8_t)(x0 + i - 1), (uint8_t)prev_y1, (uint8_t)(x0 + i), (uint8_t)y1, 1);
+        }
+        prev_y1 = y1;
+
+        if (draw_second) {
+            int y2 = cy - (int)y2_f;
+            if (y2 < y_min) y2 = y_min;
+            if (y2 > y_max) y2 = y_max;
+
+            if (!second_dotted || (i % 2 == 0)) {
+                if (i == 0 || second_dotted) {
+                    LCD_DrawPixel(&lcd, (uint8_t)(x0 + i), (uint8_t)y2, 1);
+                } else {
+                    LCD_DrawLine(&lcd, (uint8_t)(x0 + i - 1), (uint8_t)prev_y2, (uint8_t)(x0 + i), (uint8_t)y2, 1);
+                }
+            }
+            prev_y2 = y2;
+        }
+    }
 }
 
 static void set_filters_menu(void) {
@@ -157,7 +284,7 @@ static void set_filters_menu(void) {
     }
 
     lcd_draw_rectangle(139, 2, 111, 60);
-    animation_draw(ANIM_CAT6, 170, 8);
+    draw_filter_waveform(filters_menu_pointer);
     draw_mute_badge(200, 4);
     lcd_update();
 }
