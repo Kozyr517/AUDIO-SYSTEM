@@ -99,6 +99,9 @@ void sleep_timer_cb(TimerHandle_t xTimer) {
 // Процедура вимкнення та входу в Light Sleep
 static void execute_sleep_sequence(void) {
     ESP_LOGI(TAG, "5 секунд минуло. Відтворення анімації вимкнення...");
+
+    // Приглушуємо виходи DSP перед анімацією вимкнення та зняттям живлення (запобігає клацанню в акустиці)
+    audio_manager_set_master_mute(true);
     
     TickType_t start_tick = xTaskGetTickCount();
     const TickType_t anim_duration = pdMS_TO_TICKS(3000); 
@@ -150,6 +153,8 @@ static void execute_sleep_sequence(void) {
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_GPIO);
     for (size_t i = 0; i < 4; i++) {
         gpio_wakeup_disable(btn_pins[i]);
+        // Відновлюємо переривання по фронту, яке скидається викликом gpio_wakeup_disable()
+        gpio_set_intr_type(btn_pins[i], GPIO_INTR_POSEDGE);
     }
 
     any_pressed = true;
@@ -164,6 +169,9 @@ static void execute_sleep_sequence(void) {
         if (any_pressed) vTaskDelay(pdMS_TO_TICKS(20)); 
     }
     vTaskDelay(pdMS_TO_TICKS(50)); 
+
+    // Скидаємо прапорець Mute, який міг увімкнутися на 2-й секунді утримання кнопки вимкнення
+    is_muted = false;
 
     power_on_peripherals();
     vTaskDelay(pdMS_TO_TICKS(800)); 

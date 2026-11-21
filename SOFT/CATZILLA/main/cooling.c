@@ -77,8 +77,13 @@ void temperature_task(void *pvParameters) {
             g_sensors[i].valid = (err == ESP_OK);
         }
 
-        uint32_t duty_fan_1 = calculate_fan_duty(g_sensors[0].temp, g_sensors[1].temp, g_sensors[2].temp);
-        uint32_t duty_fan_2 = calculate_fan_duty(g_sensors[3].temp, g_sensors[1].temp, g_sensors[2].temp);
+        float t0 = g_sensors[0].valid ? g_sensors[0].temp : 0.0f;
+        float t1 = g_sensors[1].valid ? g_sensors[1].temp : 0.0f;
+        float t2 = g_sensors[2].valid ? g_sensors[2].temp : 0.0f;
+        float t3 = g_sensors[3].valid ? g_sensors[3].temp : 0.0f;
+
+        uint32_t duty_fan_1 = calculate_fan_duty(t0, t1, t2);
+        uint32_t duty_fan_2 = calculate_fan_duty(t3, t1, t2);
 
         ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty_fan_1);
         ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
