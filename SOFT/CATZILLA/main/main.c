@@ -23,6 +23,7 @@
 #include "animation.h"
 #include "audio_manager.h"
 #include "autosearch.h"
+// #include "remote_espnow.h" // Розкоментувати, коли пульт ESP-NOW буде готовий
 
 static const char *TAG = "MAIN";
 
@@ -361,6 +362,9 @@ void app_main(void) {
 
     xTaskCreate(temperature_task, "temperature_task", 4096, NULL, 3, NULL);
     xTaskCreate(ui_display_task, "ui_display_task", 4096, NULL, 5, NULL);
+
+    // Закоментовано, щоб не піднімати Wi-Fi до підключення пульта ESP-NOW:
+    // remote_espnow_init();
 
     ESP_LOGI(TAG, "Система успішно запущена!");
 }
