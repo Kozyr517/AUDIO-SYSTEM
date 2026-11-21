@@ -67,7 +67,7 @@ esp_err_t eeprom_read_bytes(uint16_t mem_addr, uint8_t *data, size_t len) {
         sizeof(addr_buf), 
         data, 
         len, 
-        pdMS_TO_TICKS(I2C_TIMEOUT_MS)
+        I2C_TIMEOUT_MS
     );
 }
 
@@ -96,7 +96,7 @@ esp_err_t eeprom_write_bytes(uint16_t mem_addr, const uint8_t *data, size_t len)
             eeprom_dev_handle, 
             write_buf, 
             2 + chunk_size, 
-            pdMS_TO_TICKS(I2C_TIMEOUT_MS)
+            I2C_TIMEOUT_MS
         );
         
         if (ret != ESP_OK) {
@@ -105,7 +105,7 @@ esp_err_t eeprom_write_bytes(uint16_t mem_addr, const uint8_t *data, size_t len)
         }
 
         bytes_written += chunk_size;
-        vTaskDelay(pdMS_TO_TICKS(10)); // Час на внутрішній запис EEPROM (tWC)
+        vTaskDelay(pdMS_TO_TICKS(20)); // Час на внутрішній запис EEPROM (tWC)
     }
 
     return ESP_OK;
@@ -138,8 +138,8 @@ esp_err_t eeprom_load_settings(app_settings_t *settings) {
         memset(settings, 0, sizeof(app_settings_t));
         settings->magic = SETTINGS_MAGIC;
         
-        settings->ak5572_preset = 0;
-        settings->ak4493_filter = 0;
+        // Встановлюємо дефолтний пресет аудіо на 0 (наприклад, SILK)
+        settings->audio_preset = 0;
 
         settings->adau_main_volume = 10; // Дефолтна загальна гучність
         

@@ -146,7 +146,7 @@ static void set_filters_menu(void) {
     lcd_print("DIRECT", 79, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
     // Відображаємо активний квадрат на основі збереженого фільтра в g_settings
-    switch (g_settings.ak4493_filter) {
+    switch (g_settings.audio_preset) {
         case 0: draw_active_square(62, 5); break;
         case 1: draw_active_square(62, 26); break;
         case 2: draw_active_square(62, 47); break;

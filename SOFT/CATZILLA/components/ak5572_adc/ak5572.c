@@ -2,68 +2,115 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include <stddef.h>
 
 static const char *TAG = "AK5572";
 
-// Локальний хендл саме цього пристрою (АЦП)
+// Локальний хендл пристрою на шині I2C
 static i2c_master_dev_handle_t dev_handle = NULL;
 
-// Функція запису з механізмом повторення (до 3 спроб)
-static void write_reg(uint8_t reg, uint8_t data) {
-    if (dev_handle == NULL) return;
+// Внутрішня функція запису з механізмом повторення (до 5 спроб)
+static esp_err_t write_reg(uint8_t reg, uint8_t data) {
+    if (dev_handle == NULL) {
+        ESP_LOGE(TAG, "Пристрій I2C не ініціалізовано");
+        return ESP_ERR_INVALID_STATE;
+    }
     
     uint8_t buf[2] = {reg, data};
     esp_err_t err = ESP_FAIL;
-    uint8_t retries = 3;
+    uint8_t retries = 5;
     
     while (retries--) {
-        err = i2c_master_transmit(dev_handle, buf, 2, -1);
-        
-        if (err == ESP_OK) {
-            return; // Успішний запис, виходимо
-        }
-        
-        vTaskDelay(pdMS_TO_TICKS(5)); // Чекаємо 5 мс перед наступною спробою
+        err = i2c_master_transmit(dev_handle, buf, 2, 100);
+        if (err == ESP_OK) return ESP_OK;
+        vTaskDelay(pdMS_TO_TICKS(20)); 
     }
     
-    ESP_LOGE(TAG, "Помилка I2C (Регістр 0x%02X) після 3 спроб: %s", reg, esp_err_to_name(err));
+    ESP_LOGE(TAG, "Помилка I2C (Регістр 0x%02X): %s", reg, esp_err_to_name(err));
+    return err;
 }
 
 void ak5572_init(i2c_master_bus_handle_t bus_handle, uint8_t i2c_addr, uint8_t initial_filter) {
-    i2c_device_config_t dev_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = i2c_addr,
-        .scl_speed_hz = 400000,
-    };
-    i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+    // 1. Реєстрація пристрою на шині I2C (лише один раз, щоб підтримувати повторний перезапуск)
+    if (dev_handle == NULL) {
+        i2c_device_config_t dev_cfg = {
+            .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+            .device_address = i2c_addr,
+            .scl_speed_hz = 400000,
+        };
+        esp_err_t err = i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Не вдалося додати AK5572 на шину I2C");
+            return;
+        }
+    }
 
-    // Згідно з даташитом AKM, конфігурацію треба робити при RSTN = 0 (в стані скидання)
+    // ==========================================
+    // БЛОК 1: ЗУПИНКА ТА ПІДГОТОВКА (RSTN = 0)
+    // ==========================================
+    // Reg 0x00: Вимикаємо живлення модуляторів CH1 та CH2 (біти 1:0 = 00). 
+    // Зарезервовані старші біти (7:2) ЗАВЖДИ повинні бути '1'[cite: 1].
+    write_reg(0x00, 0xFC); 
     
-    // Reg 0x00 (Power Management 1): Вмикаємо живлення лівого і правого каналів (L+R = 0x03)
-    write_reg(0x00, 0x03); 
-    
-    // Reg 0x01 (Power Management 2): Утримуємо чип в стані Reset (RSTN = 0) на час налаштування
+    // Reg 0x01: Утримуємо чип в Reset (RSTN = 0) на час налаштування. Стерео режим[cite: 1].
     write_reg(0x01, 0x00);
+    vTaskDelay(pdMS_TO_TICKS(20));
+
+    // ==========================================
+    // БЛОК 2: КОНФІГУРАЦІЯ АУДІО ТА ФІЛЬТРІВ
+    // ==========================================
+    // Reg 0x02 (Control 1):
+    // Біти 6:3 (CKS)  = 0000 (Режим Slave, MCLK 128fs -> Quad Speed 192kHz)[cite: 1]
+    // Біти 2:1 (DIF)  = 11   (Формат 32-bit I2S)[cite: 1]
+    // Біт 0    (HPFE) = 1    (Увімкнено High Pass Filter для зрізу DC-складової)[cite: 1]
+    // Разом: 0000 0111 = 0x07[cite: 1]
+    write_reg(0x02, 0x07);
     
-    // Reg 0x02 (Control 1): 
-    // 0x80 (HPFE = 1, зріз DC) + 0x60 (FMT = 11, 32-bit I2S) = 0xE0. 
-    // Додаємо до 0xE0 обраний фільтр.
-    write_reg(0x02, 0xE0 | (initial_filter & 0x03));
-    
-    // Reg 0x03 (Control 2): 0x00 = Режим Slave (ADAU генерує I2S), автоматичний вибір частоти
+    // Reg 0x03 (Control 2): 
+    // TDM[1:0] = 00 (Нормальний режим I2S, без часового мультиплексування)[cite: 1]
     write_reg(0x03, 0x00);
     
-    // Reg 0x04 (Control 3): 0x00 = Автоматичне визначення швидкості FS за MCLK
-    write_reg(0x04, 0x00);
+    // Reg 0x04 (Control 3):
+    // Біт 7    (DP)   = 0 (PCM режим)[cite: 1]
+    // Біти 1:0 (SLOW, SD) = initial_filter (Задаємо обраний фільтр)[cite: 1]
+    write_reg(0x04, (initial_filter & 0x03));
+    
+    // Reg 0x05 (DSD1):
+    // Вимикаємо DSD режим (DSDSEL=0)[cite: 1]
+    write_reg(0x05, 0x00);
+    vTaskDelay(pdMS_TO_TICKS(20));
 }
 
 void ak5572_start(void) {
-    // Reg 0x01: Знімаємо Reset (RSTN = 1), чип починає оцифровку і видачу 32-бітних даних
-    write_reg(0x01, 0x01);
+    // ==========================================
+    // БЛОК 3: ЗАПУСК
+    // ==========================================
+    // Важливо: Перед цим кроком ADAU1452 вже має генерувати стабільні MCLK, BICK та LRCK[cite: 1]!
+    
+    // Гарантуємо стан RSTN = 0 перед ввімкненням живлення каналів[cite: 1]
+    esp_err_t err = write_reg(0x01, 0x00);
+
+    // Reg 0x00: Вмикаємо живлення лівого і правого каналів (PW1=1, PW2=1)[cite: 1]. 
+    // Старші біти залишаються '1'[cite: 1].
+    if (err == ESP_OK) {
+        err = write_reg(0x00, 0xFF);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    
+    // Reg 0x01: Знімаємо Reset (RSTN = 1). Чип синхронізується з клоками і починає оцифровку[cite: 1].
+    if (err == ESP_OK) {
+        err = write_reg(0x01, 0x01);
+    }
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "AK5572 успішно запущено (192kHz / 32-bit I2S).");
+    } else {
+        ESP_LOGE(TAG, "AK5572 не вдалося запустити: %s", esp_err_to_name(err));
+    }
 }
 
 void ak5572_set_filter(uint8_t filter_bits) {
-    // При зміні фільтра на льоту, обов'язково зберігаємо налаштування HPF та 32-bit I2S (0xE0)
-    write_reg(0x02, 0xE0 | (filter_bits & 0x03));
+    // Зміна фільтра відбувається у регістрі 0x04 (Control 3)[cite: 1].
+    // Біти 7:2 залишаємо нулями (PCM режим)[cite: 1].
+    write_reg(0x04, (filter_bits & 0x03));
+    ESP_LOGI(TAG, "Фільтр AK5572 оновлено: 0x%02X", filter_bits);
 }

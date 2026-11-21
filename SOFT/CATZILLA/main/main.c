@@ -57,21 +57,26 @@ static volatile bool sleep_timer_running = false;
 // ==================== УПРАВЛІННЯ ЖИВЛЕННЯМ ПЕРИФЕРІЇ ====================
 
 static void power_on_peripherals(void) {
+    // Утримуємо лінію Reset (активний HIGH на базах VT2/VT5) під час подачі живлення
+    gpio_set_level(PIN_ADAU_RES, 1);
+
     gpio_set_level(PIN_EN_ALL_POWER, 1);
-    vTaskDelay(pdMS_TO_TICKS(50)); 
+    vTaskDelay(pdMS_TO_TICKS(100)); 
 
     gpio_set_level(PIN_VSYS_EN, 1);
     vTaskDelay(pdMS_TO_TICKS(50)); 
 
+    // Вмикаємо живлення ізольованої шини 3V3_ISO та ADAU1452 (МАЄ ЗАЛИШАТИСЯ = 1!)
     gpio_set_level(PIN_EN_POW_ADAU, 1);
     gpio_set_level(PIN_GP9, 1);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(100));
 
     gpio_set_level(PIN_BLE_EN, 1);
     gpio_set_level(PIN_EN_ADDR_LED, 1);
     
-    gpio_set_level(PIN_ADAU_RES, 1); 
-    vTaskDelay(pdMS_TO_TICKS(150)); 
+    // Відпускаємо Reset у 0 -> дозволяємо запуск ADAU1452 та заряд C42 (0.5с) для AK5572/AK4493
+    gpio_set_level(PIN_ADAU_RES, 0);
+    vTaskDelay(pdMS_TO_TICKS(200));
 }
 
 static void power_off_peripherals(void) {
@@ -159,7 +164,7 @@ static void execute_sleep_sequence(void) {
     power_on_peripherals();
     vTaskDelay(pdMS_TO_TICKS(800)); 
 
-    // TODO: apply_all_settings()
+    audio_manager_init_all();
     
     lcd_init();
     draw_boot_animation(); 
@@ -298,7 +303,7 @@ void app_main(void) {
     
     master_volume = g_settings.adau_main_volume;
     
-    // TODO: apply_all_settings()
+    // Ініціалізує AKM + ADAU1452 і всередині викликає audio_manager_apply_all_settings()
     audio_manager_init_all();
 
     analizator_init();
