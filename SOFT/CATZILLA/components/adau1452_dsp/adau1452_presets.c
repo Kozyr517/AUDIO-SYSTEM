@@ -1,7 +1,21 @@
 #include "adau1452.h"
 
-// Одиничний біквад (Flat): {B0, B1, B2, A1, A2}
-#define FLAT_BIQUAD { 0x01000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000 }
+/* ============================================================================
+ * 1. ПРЕСЕТИ 15-СМУГОВОГО ЕКВАЛАЙЗЕРА (Mid Filter1)
+ * Порядок 5 слів у кожній смузі (згідно з adau1452_IC_1_PARAM.h):
+ *   { B2, B1, B0, A2, A1 }
+ * Плоский фільтр (0 dB): { 0x00000000, 0x00000000, 0x01000000, 0x00000000, 0x00000000 }
+ * ============================================================================ */
+#define FLAT_BIQUAD { 0x00000000, 0x00000000, 0x01000000, 0x00000000, 0x00000000 }
+
+// Автоматична таблиця стартових адрес усіх 15 смуг із adau1452_IC_1_PARAM.h
+static const uint16_t k_eq_band_addrs[EQ_BANDS_COUNT] = {
+    REG_EQ_BAND_1_START,  REG_EQ_BAND_2_START,  REG_EQ_BAND_3_START,
+    REG_EQ_BAND_4_START,  REG_EQ_BAND_5_START,  REG_EQ_BAND_6_START,
+    REG_EQ_BAND_7_START,  REG_EQ_BAND_8_START,  REG_EQ_BAND_9_START,
+    REG_EQ_BAND_10_START, REG_EQ_BAND_11_START, REG_EQ_BAND_12_START,
+    REG_EQ_BAND_13_START, REG_EQ_BAND_14_START, REG_EQ_BAND_15_START
+};
 
 static const uint32_t eq_presets_table[EQ_PRESET_MAX][EQ_BANDS_COUNT][BIQUAD_WORDS_PER_BAND] = {
     [EQ_PRESET_FLAT] = {
@@ -9,21 +23,30 @@ static const uint32_t eq_presets_table[EQ_PRESET_MAX][EQ_BANDS_COUNT][BIQUAD_WOR
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
     },
+
+    // <<< TODO [EQ_PRESET_ROCK]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
+    //     зі SigmaStudio (Capture Window або експорт Param_Data для пресета Rock)
     [EQ_PRESET_ROCK] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
     },
+
+    // <<< TODO [EQ_PRESET_POP]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
     [EQ_PRESET_POP] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
     },
+
+    // <<< TODO [EQ_PRESET_JAZZ]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
     [EQ_PRESET_JAZZ] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
     },
+
+    // <<< TODO [EQ_PRESET_CUSTOM]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
     [EQ_PRESET_CUSTOM] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
@@ -31,14 +54,66 @@ static const uint32_t eq_presets_table[EQ_PRESET_MAX][EQ_BANDS_COUNT][BIQUAD_WOR
     }
 };
 
+/* ============================================================================
+ * 2. ПРЕСЕТИ ADI SURROUND (ADIsurround1: 29 параметрів)
+ * Адреси підтягуються автоматично з adau1452_IC_1_PARAM.h.
+ * Щоб заповнити 4 режими: у SigmaStudio відкрийте Capture Window, по черзі
+ * перемкніть (Small/Large + Music/Surround) і скиньте сюди отримані HEX-значення.
+ * ============================================================================ */
+static const uint16_t k_surround_addrs[SURROUND_PARAMS_COUNT] = {
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYA_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYB_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYC_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYD_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYE_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYF_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYA2_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DELAYRS_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DIL_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F3A1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F3B1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F3B0_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F2A2_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F2A1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F2B2_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F2B1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F2B0_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F4B1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F4B0_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001F4A1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001GAIN1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001GAIN2_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001GAIN3_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001GAIN4_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001ONEBYROOT2_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001DECVAL_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001ROOT_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001CNTR1_ADDR,
+    MOD_ADISURROUND1_ALG0_ADISURROUNDALGS3001CNTR2_ADDR
+};
+
+// Поточний базовий пресет із вашого Param_Data_IC_1 (тимчасова заглушка)
+#define SURROUND_CURRENT_SIGMA_DATA { \
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, \
+    0x00000000, 0x00000000, 0x00000000, 0x00FE5477, 0xFF00D5C4, 0x00FF2A3C, \
+    0xFF025BCE, 0x01FDA167, 0x00FED166, 0xFE025D33, 0x00FED166, 0xFF01AA26, \
+    0x00FE55DA, 0x00FCABB4, \
+    0x00B53BEF, 0x002892C2, 0x00404DE6, 0x00804DCE, \
+    0x00B53BF0, 0x00000000, 0x02D413CC, 0x00000000, 0x00000006 \
+}
+
 static const uint32_t surround_presets_table[2][2][SURROUND_PARAMS_COUNT] = {
     [SURROUND_ROOM_SMALL] = {
-        [SURROUND_STYLE_MUSIC] = { 0x01000000, 0, 0, 0, 0, 0, 0, 0 },
-        [SURROUND_STYLE_MOVIE] = { 0x01000000, 0, 0, 0, 0, 0, 0, 0 }
+        // <<< TODO [SURROUND SMALL + MUSIC]: вставити 29 HEX-слів із Capture Window
+        [SURROUND_MODE_MUSIC]    = SURROUND_CURRENT_SIGMA_DATA,
+        // <<< TODO [SURROUND SMALL + SURROUND]: вставити 29 HEX-слів із Capture Window
+        [SURROUND_MODE_SURROUND] = SURROUND_CURRENT_SIGMA_DATA
     },
-    [SURROUND_ROOM_HALL] = {
-        [SURROUND_STYLE_MUSIC] = { 0x01000000, 0, 0, 0, 0, 0, 0, 0 },
-        [SURROUND_STYLE_MOVIE] = { 0x01000000, 0, 0, 0, 0, 0, 0, 0 }
+    [SURROUND_ROOM_LARGE] = {
+        // <<< TODO [SURROUND LARGE + MUSIC]: вставити 29 HEX-слів із Capture Window
+        [SURROUND_MODE_MUSIC]    = SURROUND_CURRENT_SIGMA_DATA,
+        // <<< TODO [SURROUND LARGE + SURROUND]: вставити 29 HEX-слів із Capture Window
+        [SURROUND_MODE_SURROUND] = SURROUND_CURRENT_SIGMA_DATA
     }
 };
 
@@ -46,9 +121,8 @@ esp_err_t adau1452_apply_eq_preset(eq_preset_id_t preset) {
     if (preset >= EQ_PRESET_MAX) return ESP_ERR_INVALID_ARG;
 
     for (uint8_t band = 0; band < EQ_BANDS_COUNT; band++) {
-        uint16_t band_addr = REG_EQ_BAND1_START + (band * BIQUAD_WORDS_PER_BAND);
         esp_err_t ret = adau1452_safeload_write(
-            band_addr,
+            k_eq_band_addrs[band],
             eq_presets_table[preset][band],
             BIQUAD_WORDS_PER_BAND
         );
@@ -57,13 +131,16 @@ esp_err_t adau1452_apply_eq_preset(eq_preset_id_t preset) {
     return ESP_OK;
 }
 
-esp_err_t adau1452_apply_surround(surround_room_t room, surround_style_t style) {
-    if (room > SURROUND_ROOM_HALL || style > SURROUND_STYLE_MOVIE) {
+esp_err_t adau1452_apply_surround(surround_room_t room, surround_mode_t mode) {
+    if (room > SURROUND_ROOM_LARGE || mode > SURROUND_MODE_SURROUND) {
         return ESP_ERR_INVALID_ARG;
     }
 
     for (uint8_t i = 0; i < SURROUND_PARAMS_COUNT; i++) {
-        esp_err_t ret = adau1452_write_u32(REG_SURROUND_BASE + i, surround_presets_table[room][style][i]);
+        esp_err_t ret = adau1452_write_u32(
+            k_surround_addrs[i],
+            surround_presets_table[room][mode][i]
+        );
         if (ret != ESP_OK) return ret;
     }
     return ESP_OK;

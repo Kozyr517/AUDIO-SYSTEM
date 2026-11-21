@@ -43,11 +43,7 @@ volatile bool is_muted = false;
 
 void set_mute_state(bool enable_mute) {
     is_muted = enable_mute;
-    if (is_muted) {
-        // ESP_LOGW(TAG_BTN, "[AUDIO] MUTE УВІМКНЕНО (Звук вимкнено)");
-    } else {
-        // ESP_LOGI(TAG_BTN, "[AUDIO] UNMUTE (Звук відновлено)");
-    }
+    audio_manager_set_master_mute(enable_mute);
 }
 
 void toggle_mute(void) {
@@ -180,7 +176,8 @@ static void change_volume(int delta) {
     
     if (new_vol != master_volume) {
         master_volume = (uint8_t)new_vol;
-        g_settings.adau_main_volume = master_volume; 
+        g_settings.adau_main_volume = master_volume;
+        audio_manager_set_master_volume(master_volume);
     }
     
     current_state = STATE_VOLUME_POPUP;
@@ -311,10 +308,12 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                             break;
                         case 3: 
                             g_settings.adau_surround_mode = !g_settings.adau_surround_mode;
+                            audio_manager_set_surround_mode(g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND);
                             old_menu_pointer = 255;
                             break;
                         case 4: 
                             g_settings.sys_mode = !g_settings.sys_mode;
+                            audio_manager_set_speaker_mode(g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1);
                             old_menu_pointer = 255;
                             break;
                         case 5: menu_pointer = PHONO_MENU_NUM; break;

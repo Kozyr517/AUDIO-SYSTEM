@@ -8,7 +8,7 @@ static const char *TAG = "AK5572";
 // Локальний хендл пристрою на шині I2C
 static i2c_master_dev_handle_t dev_handle = NULL;
 
-// Внутрішня функція запису з механізмом повторення (до 3 спроб)
+// Внутрішня функція запису з механізмом повторення (до 5 спроб)
 static esp_err_t write_reg(uint8_t reg, uint8_t data) {
     if (dev_handle == NULL) {
         ESP_LOGE(TAG, "Пристрій I2C не ініціалізовано");
@@ -17,12 +17,12 @@ static esp_err_t write_reg(uint8_t reg, uint8_t data) {
     
     uint8_t buf[2] = {reg, data};
     esp_err_t err = ESP_FAIL;
-    uint8_t retries = 3;
+    uint8_t retries = 5;
     
     while (retries--) {
         err = i2c_master_transmit(dev_handle, buf, 2, 100);
         if (err == ESP_OK) return ESP_OK;
-        vTaskDelay(pdMS_TO_TICKS(5)); 
+        vTaskDelay(pdMS_TO_TICKS(20)); 
     }
     
     ESP_LOGE(TAG, "Помилка I2C (Регістр 0x%02X): %s", reg, esp_err_to_name(err));
@@ -53,7 +53,7 @@ void ak5572_init(i2c_master_bus_handle_t bus_handle, uint8_t i2c_addr, uint8_t i
     
     // Reg 0x01: Утримуємо чип в Reset (RSTN = 0) на час налаштування. Стерео режим[cite: 1].
     write_reg(0x01, 0x00);
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(20));
 
     // ==========================================
     // БЛОК 2: КОНФІГУРАЦІЯ АУДІО ТА ФІЛЬТРІВ
@@ -77,7 +77,7 @@ void ak5572_init(i2c_master_bus_handle_t bus_handle, uint8_t i2c_addr, uint8_t i
     // Reg 0x05 (DSD1):
     // Вимикаємо DSD режим (DSDSEL=0)[cite: 1]
     write_reg(0x05, 0x00);
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(20));
 }
 
 void ak5572_start(void) {
@@ -87,17 +87,25 @@ void ak5572_start(void) {
     // Важливо: Перед цим кроком ADAU1452 вже має генерувати стабільні MCLK, BICK та LRCK[cite: 1]!
     
     // Гарантуємо стан RSTN = 0 перед ввімкненням живлення каналів[cite: 1]
-    write_reg(0x01, 0x00);
+    esp_err_t err = write_reg(0x01, 0x00);
 
     // Reg 0x00: Вмикаємо живлення лівого і правого каналів (PW1=1, PW2=1)[cite: 1]. 
     // Старші біти залишаються '1'[cite: 1].
-    write_reg(0x00, 0xFF);
-    vTaskDelay(pdMS_TO_TICKS(5));
+    if (err == ESP_OK) {
+        err = write_reg(0x00, 0xFF);
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
     
     // Reg 0x01: Знімаємо Reset (RSTN = 1). Чип синхронізується з клоками і починає оцифровку[cite: 1].
-    write_reg(0x01, 0x01);
-    
-    ESP_LOGI(TAG, "AK5572 успішно запущено (192kHz / 32-bit I2S).");
+    if (err == ESP_OK) {
+        err = write_reg(0x01, 0x01);
+    }
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "AK5572 успішно запущено (192kHz / 32-bit I2S).");
+    } else {
+        ESP_LOGE(TAG, "AK5572 не вдалося запустити: %s", esp_err_to_name(err));
+    }
 }
 
 void ak5572_set_filter(uint8_t filter_bits) {

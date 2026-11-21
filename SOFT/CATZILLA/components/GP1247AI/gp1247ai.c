@@ -56,15 +56,9 @@ void LCD_Update(TypeDef_GP1247AI *p_lcd_obj) {
 }
 
 void LCD_DrawPixel(TypeDef_GP1247AI *p_lcd_obj, uint8_t x, uint8_t y, uint8_t color) {
-	void LCD_DrawPixel(TypeDef_GP1247AI *p_lcd_obj, uint8_t x, uint8_t y, uint8_t color) {
-    if ((x >= PIX_SIZE_X) || (y >= PIX_SIZE_Y))
-        return;
+	if ((x >= PIX_SIZE_X) || (y >= PIX_SIZE_Y))
+		return;
 
-    if (color)
-        p_lcd_obj->video_buffer[x * 8 + (y / 8)] |= 1 << (y % 8);
-    else
-        p_lcd_obj->video_buffer[x * 8 + (y / 8)] &= ~(1 << (y % 8));
-}
 	if (color)
 		p_lcd_obj->video_buffer[x * 8 + (y / 8)] |= 1 << (y % 8);
 	else

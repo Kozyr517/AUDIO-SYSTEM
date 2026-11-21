@@ -10,13 +10,14 @@ static const char *TAG = "AK4493";
 static i2c_master_dev_handle_t dac_handles[3] = {NULL, NULL, NULL};
 
 // Запис у всі 3 ЦАПи з механізмом повторення
-static void write_reg_all(uint8_t reg, uint8_t data) {
+static esp_err_t write_reg_all(uint8_t reg, uint8_t data) {
     uint8_t buf[2] = {reg, data};
+    esp_err_t first_err = ESP_OK;
     
     for (int i = 0; i < 3; i++) {
         if (dac_handles[i] != NULL) {
             esp_err_t err = ESP_FAIL;
-            uint8_t retries = 3;
+            uint8_t retries = 5;
             bool success = false;
             
             while (retries--) {
@@ -26,15 +27,22 @@ static void write_reg_all(uint8_t reg, uint8_t data) {
                     success = true;
                     break;
                 }
-                vTaskDelay(pdMS_TO_TICKS(5)); 
+                vTaskDelay(pdMS_TO_TICKS(20)); 
             }
             
             if (!success) {
                 ESP_LOGE(TAG, "ЦАП %d (0x%02X) НЕ ВІДПОВІДАЄ (Рег 0x%02X): %s", 
                          i + 1, 0x10 + i, reg, esp_err_to_name(err));
+                if (first_err == ESP_OK) {
+                    first_err = err;
+                }
             }
+        } else if (first_err == ESP_OK) {
+            first_err = ESP_ERR_INVALID_STATE;
         }
     }
+
+    return first_err;
 }
 
 void ak4493_init_all(i2c_master_bus_handle_t bus_handle, const uint8_t *i2c_addrs, uint8_t initial_filter) {
@@ -54,7 +62,7 @@ void ak4493_init_all(i2c_master_bus_handle_t bus_handle, const uint8_t *i2c_addr
     // ACKS=0 (Ручний режим 192кГц — надійніше за авто), DIF=111 (32-bit I2S), RSTN=0 (Утримуємо Reset)
     // Байт: 0000 1110 = 0x0E
     write_reg_all(0x00, 0x0E);
-    vTaskDelay(pdMS_TO_TICKS(5));
+    vTaskDelay(pdMS_TO_TICKS(20));
     
     // 2. Встановлення цифрового фільтра + жорстко Quad Speed 192kHz (регістри 0x01, 0x02, 0x05)
     ak4493_set_filter_all(initial_filter);
@@ -72,16 +80,21 @@ void ak4493_init_all(i2c_master_bus_handle_t bus_handle, const uint8_t *i2c_addr
     // 6. Reg 0x08 (Sound Control): Дефолтний режим
     write_reg_all(0x08, 0x00);
 
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(20));
 }
 
 void ak4493_start_all(void) {
-    // Reg 0x00: Спочатку гарантовано скидаємо RSTN=0 на 5 мс, потім піднімаємо RSTN=1 (0x0F).
+    // Reg 0x00: Спочатку гарантовано скидаємо RSTN=0 на 20 мс, потім піднімаємо RSTN=1 (0x0F).
     // Це перезапускає внутрішню синхронізацію ЦАПів під поточні клоки ADAU1452!
-    write_reg_all(0x00, 0x0E);
-    vTaskDelay(pdMS_TO_TICKS(5));
-    write_reg_all(0x00, 0x0F);
-    ESP_LOGI(TAG, "Усі 3 ЦАПи AK4493 успішно запущені (192kHz 32-bit I2S)");
+    esp_err_t err1 = write_reg_all(0x00, 0x0E);
+    vTaskDelay(pdMS_TO_TICKS(20));
+    esp_err_t err2 = write_reg_all(0x00, 0x0F);
+    if (err1 == ESP_OK && err2 == ESP_OK) {
+        ESP_LOGI(TAG, "Усі 3 ЦАПи AK4493 успішно запущені (192kHz 32-bit I2S)");
+    } else {
+        esp_err_t err = (err1 != ESP_OK) ? err1 : err2;
+        ESP_LOGE(TAG, "Не вдалося запустити усі 3 ЦАПи AK4493: %s", esp_err_to_name(err));
+    }
 }
 
 void ak4493_set_filter_all(uint8_t filter_bits) {
