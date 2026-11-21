@@ -123,8 +123,10 @@ static void exit_setup_menu(void) {
 
 // ==================== ДАНІ ТА СТРУКТУРИ LED ====================
 typedef struct { float r, g, b; } Color;
-static const Color COLOR_IDLE   = {4.0f,  24.0f, 9.0f};  
-static const Color COLOR_ACTIVE = {25.5f, 18.0f, 0.0f};
+static const Color COLOR_IDLE          = {4.0f,  24.0f, 9.0f};  
+static const Color COLOR_ACTIVE        = {25.5f, 18.0f, 0.0f};
+static const Color COLOR_IDLE_CINEMA   = {1.0f,  4.0f,  1.5f};  // Приглушена підсвітка у режимі Сінема (SURROUND)
+static const Color COLOR_ACTIVE_CINEMA = {8.0f,  5.5f,  0.0f};  // Приглушений активний клік у режимі Сінема
 
 typedef struct {
     gpio_num_t gpio;
@@ -143,12 +145,16 @@ static QueueHandle_t gpio_event_queue = NULL;
 static void led_fader_task(void *pvParameters) {
     const float step = 0.25f; 
     while (1) {
+        bool is_cinema_mode = (g_settings.sys_mode != 0 && g_settings.adau_surround_mode == 0);
+        Color idle_col   = is_cinema_mode ? COLOR_IDLE_CINEMA   : COLOR_IDLE;
+        Color active_col = is_cinema_mode ? COLOR_ACTIVE_CINEMA : COLOR_ACTIVE;
+
         for (int i = 0; i < LED_COUNT_FRONT; i++) {
             int led_idx = btn_map[i].led_index;
             if (gpio_get_level(btn_map[i].gpio) == 1) {
-                target_colors[led_idx] = COLOR_ACTIVE;
+                target_colors[led_idx] = active_col;
             } else {
-                target_colors[led_idx] = COLOR_IDLE;
+                target_colors[led_idx] = idle_col;
             }
         }
 

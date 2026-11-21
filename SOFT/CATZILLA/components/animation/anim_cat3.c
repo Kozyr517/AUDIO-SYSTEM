@@ -251,7 +251,7 @@ void anim_cat3_draw(uint16_t x, uint16_t y) {
     
     // Кількість викликів anim_cat3_draw(), протягом яких утримується один кадр.
     // Збільшуйте це значення для сповільнення (наприклад, 5, 8 або 10).
-    const uint8_t FRAME_HOLD_COUNT = 6; 
+    const uint8_t FRAME_HOLD_COUNT = 2; 
     
     const uint8_t *frame_bitmap = cat3_frames[current_frame];
     
