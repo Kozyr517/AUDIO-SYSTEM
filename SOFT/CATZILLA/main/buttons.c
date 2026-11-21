@@ -55,7 +55,10 @@ void toggle_mute(void) {
 static void button_activity_timer_cb(TimerHandle_t xTimer) {
     button_idle_flag = 0;
     check_system_idle();
-    settings_commit_check(); 
+    // Не записуємо в EEPROM, поки відкрите меню налаштувань (запис відбувається лише при виході з меню)
+    if (current_state != STATE_SETUP_MENU) {
+        settings_commit_check();
+    }
 }
 
 static void mark_button_activity(void) {
@@ -92,7 +95,24 @@ static void load_menu_pointers_from_ram(void) {
     myspace_param_pointer   = 0;
 }
 
+static void restore_unconfirmed_preview(void) {
+    if (menu_pointer == EQ_MENU_NUM) {
+        if (eq_menu_pointer != g_settings.adau_eq_preset) {
+            eq_menu_pointer = g_settings.adau_eq_preset;
+            audio_manager_set_eq_preset((eq_preset_id_t)g_settings.adau_eq_preset);
+        }
+    } else if (menu_pointer == FILTERS_MENU_NUM) {
+        if (filters_menu_pointer != g_settings.audio_preset) {
+            filters_menu_pointer = g_settings.audio_preset;
+            audio_update_filters(g_settings.audio_preset);
+        }
+    }
+}
+
 static void exit_setup_menu(void) {
+    // Якщо вихід стався по таймауту без натискання OK у меню EQ або FILTERS — повертаємо збережений пресет (з крапочкою)
+    restore_unconfirmed_preview();
+
     myspace_depth = 0;
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
     menu_pointer = MAIN_MENU_NUM;
@@ -281,20 +301,52 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
     switch (butt_num) {
         case PIN_BTN_1: // Вгору / Збільшення значення
             switch (menu_pointer) {
-                case MAIN_MENU_NUM:    if (main_menu_pointer > 0) main_menu_pointer--; break;
-                case FILTERS_MENU_NUM: if (filters_menu_pointer > 0) filters_menu_pointer--; break;
-                case EQ_MENU_NUM:      if (eq_menu_pointer > 0) eq_menu_pointer--; break;
-                case PHONO_MENU_NUM:   if (phono_menu_pointer > 0) phono_menu_pointer--; break;
+                case MAIN_MENU_NUM:
+                    if (main_menu_pointer > 0) main_menu_pointer--;
+                    break;
+                case FILTERS_MENU_NUM:
+                    if (filters_menu_pointer > 0) {
+                        filters_menu_pointer--;
+                        // Перемикаємо фільтр на льоту по курсору (лише в чипах/RAM, без зміни збереженого g_settings)
+                        audio_update_filters(filters_menu_pointer);
+                    }
+                    break;
+                case EQ_MENU_NUM:
+                    if (eq_menu_pointer > 0) {
+                        eq_menu_pointer--;
+                        // Перемикаємо EQ на льоту по курсору (лише в DSP RAM, без зміни збереженого g_settings)
+                        audio_manager_set_eq_preset((eq_preset_id_t)eq_menu_pointer);
+                    }
+                    break;
+                case PHONO_MENU_NUM:
+                    if (phono_menu_pointer > 0) phono_menu_pointer--;
+                    break;
             }
             old_menu_pointer = 255;
             break;
 
         case PIN_BTN_2: // Вниз / Зменшення значення
             switch (menu_pointer) {
-                case MAIN_MENU_NUM:    if (main_menu_pointer < 5) main_menu_pointer++; break;
-                case FILTERS_MENU_NUM: if (filters_menu_pointer < 5) filters_menu_pointer++; break;
-                case EQ_MENU_NUM:      if (eq_menu_pointer < 5) eq_menu_pointer++; break;
-                case PHONO_MENU_NUM:   if (phono_menu_pointer < 1) phono_menu_pointer++; break;
+                case MAIN_MENU_NUM:
+                    if (main_menu_pointer < 5) main_menu_pointer++;
+                    break;
+                case FILTERS_MENU_NUM:
+                    if (filters_menu_pointer < 5) {
+                        filters_menu_pointer++;
+                        // Перемикаємо фільтр на льоту по курсору (лише в чипах/RAM, без зміни збереженого g_settings)
+                        audio_update_filters(filters_menu_pointer);
+                    }
+                    break;
+                case EQ_MENU_NUM:
+                    if (eq_menu_pointer < 5) {
+                        eq_menu_pointer++;
+                        // Перемикаємо EQ на льоту по курсору (лише в DSP RAM, без зміни збереженого g_settings)
+                        audio_manager_set_eq_preset((eq_preset_id_t)eq_menu_pointer);
+                    }
+                    break;
+                case PHONO_MENU_NUM:
+                    if (phono_menu_pointer < 1) phono_menu_pointer++;
+                    break;
             }
             old_menu_pointer = 255;
             break;
@@ -303,8 +355,14 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
             switch (menu_pointer) {
                 case MAIN_MENU_NUM:
                     switch (main_menu_pointer) {
-                        case 0: menu_pointer = EQ_MENU_NUM; break;
-                        case 1: menu_pointer = FILTERS_MENU_NUM; break;
+                        case 0:
+                            eq_menu_pointer = g_settings.adau_eq_preset;
+                            menu_pointer = EQ_MENU_NUM;
+                            break;
+                        case 1:
+                            filters_menu_pointer = g_settings.audio_preset;
+                            menu_pointer = FILTERS_MENU_NUM;
+                            break;
                         case 2: 
                             menu_pointer = MYSPACE_MENU_NUM; 
                             myspace_depth = 0;
@@ -364,6 +422,8 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
             if (menu_pointer == MAIN_MENU_NUM) {
                 exit_setup_menu(); // Збереження викликається тут
             } else {
+                // Якщо користувач не натиснув OK перед виходом із підменю EQ / FILTERS — повертаємо збережений пресет із крапочкою
+                restore_unconfirmed_preview();
                 menu_pointer = MAIN_MENU_NUM;
                 old_menu_pointer = 255;
             }

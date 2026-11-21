@@ -124,11 +124,37 @@ esp_err_t audio_manager_set_input_source(audio_input_src_t src) {
     return adau1452_set_slew_mux(REG_MUX_INPUT_SEL_BASE, MUX_INPUT_SEL_INPUTS, (uint8_t)src);
 }
 
-// 4. 15-смуговий EQ (Mid Filter1)
+// Допоміжні функції синхронного Mute/Unmute для Mute2 та Mute1
+static void hw_mute_both(void) {
+    adau1452_write_u32(REG_MUTE_MASTER, DSP_ZERO_8_24);
+    adau1452_write_u32(REG_MUTE_2_1_CUTOFF, DSP_ZERO_8_24);
+}
+
+static void hw_unmute_both_if_allowed(void) {
+    if (!is_muted) {
+        adau1452_write_u32(REG_MUTE_MASTER, DSP_UNITY_8_24);
+        uint32_t mute1_val = (s_dsp.speaker_mode == SPEAKER_MODE_5_1) ? DSP_UNITY_8_24 : DSP_ZERO_8_24;
+        adau1452_write_u32(REG_MUTE_2_1_CUTOFF, mute1_val);
+    }
+}
+
+// 4. 15-смуговий EQ (Mid Filter1) із плавним Mute (Mute2 + Mute1) перед записом та Unmute через 50 мс
 esp_err_t audio_manager_set_eq_preset(eq_preset_id_t preset) {
     if (preset >= EQ_PRESET_MAX) return ESP_ERR_INVALID_ARG;
     s_dsp.eq_preset = (uint8_t)preset;
-    return adau1452_apply_eq_preset(preset);
+
+    // 1. М'ютимо обидва виходи (Mute2 та Mute1) перед зміною коефіцієнтів 15 біквадів
+    hw_mute_both();
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    // 2. Записуємо новий пресет еквалайзера
+    esp_err_t ret = adau1452_apply_eq_preset(preset);
+
+    // 3. Чекаємо 50 мс і розм'ючуємо Mute2 та Mute1
+    vTaskDelay(pdMS_TO_TICKS(50));
+    hw_unmute_both_if_allowed();
+
+    return ret;
 }
 
 // 5. Режим 2.1 / 5.1 (Nx2-1_4 + автоматичний Mute1 для відсікання каналів у 2.1)
@@ -269,7 +295,7 @@ void audio_manager_apply_all_settings(void) {
     audio_manager_set_input_source(s_dsp.input_source);
     audio_manager_set_speaker_mode(s_dsp.speaker_mode);
     audio_manager_set_master_volume(master_volume);
-    audio_manager_set_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
+    adau1452_apply_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
     audio_manager_set_surround_mode((surround_mode_t)s_dsp.surround_mode);
 
     audio_manager_update_all_distances();
@@ -333,8 +359,9 @@ void audio_manager_init_all(void) {
     // ==============================================================
     ESP_LOGI(TAG, "Підключення до DSP ADAU1452...");
     if (adau1452_init(i2c_bus_handle, ADAU1452_DSP_ADDR) == ESP_OK) {
-        adau1452_write_u32(REG_MUTE_MASTER, DSP_ZERO_8_24);
+        hw_mute_both();
         audio_manager_apply_all_settings();
+        hw_mute_both(); // Утримуємо Mute2 та Mute1 закритими до повного старту АЦП/ЦАП
     }
     
     // Чекаємо стабілізації PLL всередині DSP
@@ -354,9 +381,7 @@ void audio_manager_init_all(void) {
     ak5572_start();                                 
     ak4493_start_all();
 
-    if (!is_muted) {
-        adau1452_write_u32(REG_MUTE_MASTER, DSP_UNITY_8_24);
-    }
+    hw_unmute_both_if_allowed();
 
     ESP_LOGI(TAG, "Аудіотракт CATZILLA SYSTEM успішно запущено!");
 }
