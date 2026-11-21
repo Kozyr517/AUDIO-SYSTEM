@@ -16,6 +16,7 @@
 #include "buttons.h"
 #include "eeprom_24lc128.h" 
 #include "audio_manager.h"
+#include "autosearch.h"
 
 #define MYSPACE_TARGET_COUNT 12
 float myspace_values[MYSPACE_TARGET_COUNT] = {
@@ -54,7 +55,10 @@ void toggle_mute(void) {
 static void button_activity_timer_cb(TimerHandle_t xTimer) {
     button_idle_flag = 0;
     check_system_idle();
-    settings_commit_check(); 
+    // Не записуємо в EEPROM, поки відкрите меню налаштувань (запис відбувається лише при виході з меню)
+    if (current_state != STATE_SETUP_MENU) {
+        settings_commit_check();
+    }
 }
 
 static void mark_button_activity(void) {
@@ -91,7 +95,24 @@ static void load_menu_pointers_from_ram(void) {
     myspace_param_pointer   = 0;
 }
 
+static void restore_unconfirmed_preview(void) {
+    if (menu_pointer == EQ_MENU_NUM) {
+        if (eq_menu_pointer != g_settings.adau_eq_preset) {
+            eq_menu_pointer = g_settings.adau_eq_preset;
+            audio_manager_set_eq_preset((eq_preset_id_t)g_settings.adau_eq_preset);
+        }
+    } else if (menu_pointer == FILTERS_MENU_NUM) {
+        if (filters_menu_pointer != g_settings.audio_preset) {
+            filters_menu_pointer = g_settings.audio_preset;
+            audio_update_filters(g_settings.audio_preset);
+        }
+    }
+}
+
 static void exit_setup_menu(void) {
+    // Якщо вихід стався по таймауту без натискання OK у меню EQ або FILTERS — повертаємо збережений пресет (з крапочкою)
+    restore_unconfirmed_preview();
+
     myspace_depth = 0;
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
     menu_pointer = MAIN_MENU_NUM;
@@ -197,6 +218,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     myspace_values[myspace_speaker_pointer] = roundf(myspace_values[myspace_speaker_pointer] * 10.0f) / 10.0f;
                     
                     g_settings.adau_distances[myspace_speaker_pointer] = (uint8_t)(myspace_values[myspace_speaker_pointer] * 10.0f);
+                    audio_manager_set_channel_distance_m((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer]);
                 } else { // Гучність (GAIN)
                     myspace_values[myspace_speaker_pointer + 6] += 0.50f;
                     if (myspace_values[myspace_speaker_pointer + 6] > 12.0f) {
@@ -206,6 +228,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     
                     // Збереження зі зміщенням у uint8_t: (val + 12.0) * 2
                     g_settings.adau_vol_ch[myspace_speaker_pointer] = (uint8_t)((myspace_values[myspace_speaker_pointer + 6] + 12.0f) * 2.0f);
+                    audio_manager_set_channel_gain_db((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer + 6]);
                 }
             } else if (myspace_depth == 1) {
                 myspace_param_pointer = 1;
@@ -224,6 +247,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     myspace_values[myspace_speaker_pointer] = roundf(myspace_values[myspace_speaker_pointer] * 10.0f) / 10.0f;
                     
                     g_settings.adau_distances[myspace_speaker_pointer] = (uint8_t)(myspace_values[myspace_speaker_pointer] * 10.0f);
+                    audio_manager_set_channel_distance_m((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer]);
                 } else { // Гучність (GAIN)
                     myspace_values[myspace_speaker_pointer + 6] -= 0.50f;
                     if (myspace_values[myspace_speaker_pointer + 6] < -12.0f) {
@@ -233,6 +257,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     
                     // Збереження зі зміщенням у uint8_t: (val + 12.0) * 2
                     g_settings.adau_vol_ch[myspace_speaker_pointer] = (uint8_t)((myspace_values[myspace_speaker_pointer + 6] + 12.0f) * 2.0f);
+                    audio_manager_set_channel_gain_db((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer + 6]);
                 }
             } else if (myspace_depth == 1) {
                 myspace_param_pointer = 0;
@@ -276,20 +301,52 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
     switch (butt_num) {
         case PIN_BTN_1: // Вгору / Збільшення значення
             switch (menu_pointer) {
-                case MAIN_MENU_NUM:    if (main_menu_pointer > 0) main_menu_pointer--; break;
-                case FILTERS_MENU_NUM: if (filters_menu_pointer > 0) filters_menu_pointer--; break;
-                case EQ_MENU_NUM:      if (eq_menu_pointer > 0) eq_menu_pointer--; break;
-                case PHONO_MENU_NUM:   if (phono_menu_pointer > 0) phono_menu_pointer--; break;
+                case MAIN_MENU_NUM:
+                    if (main_menu_pointer > 0) main_menu_pointer--;
+                    break;
+                case FILTERS_MENU_NUM:
+                    if (filters_menu_pointer > 0) {
+                        filters_menu_pointer--;
+                        // Перемикаємо фільтр на льоту по курсору (лише в чипах/RAM, без зміни збереженого g_settings)
+                        audio_update_filters(filters_menu_pointer);
+                    }
+                    break;
+                case EQ_MENU_NUM:
+                    if (eq_menu_pointer > 0) {
+                        eq_menu_pointer--;
+                        // Перемикаємо EQ на льоту по курсору (лише в DSP RAM, без зміни збереженого g_settings)
+                        audio_manager_set_eq_preset((eq_preset_id_t)eq_menu_pointer);
+                    }
+                    break;
+                case PHONO_MENU_NUM:
+                    if (phono_menu_pointer > 0) phono_menu_pointer--;
+                    break;
             }
             old_menu_pointer = 255;
             break;
 
         case PIN_BTN_2: // Вниз / Зменшення значення
             switch (menu_pointer) {
-                case MAIN_MENU_NUM:    if (main_menu_pointer < 5) main_menu_pointer++; break;
-                case FILTERS_MENU_NUM: if (filters_menu_pointer < 5) filters_menu_pointer++; break;
-                case EQ_MENU_NUM:      if (eq_menu_pointer < 5) eq_menu_pointer++; break;
-                case PHONO_MENU_NUM:   if (phono_menu_pointer < 1) phono_menu_pointer++; break;
+                case MAIN_MENU_NUM:
+                    if (main_menu_pointer < 5) main_menu_pointer++;
+                    break;
+                case FILTERS_MENU_NUM:
+                    if (filters_menu_pointer < 5) {
+                        filters_menu_pointer++;
+                        // Перемикаємо фільтр на льоту по курсору (лише в чипах/RAM, без зміни збереженого g_settings)
+                        audio_update_filters(filters_menu_pointer);
+                    }
+                    break;
+                case EQ_MENU_NUM:
+                    if (eq_menu_pointer < 5) {
+                        eq_menu_pointer++;
+                        // Перемикаємо EQ на льоту по курсору (лише в DSP RAM, без зміни збереженого g_settings)
+                        audio_manager_set_eq_preset((eq_preset_id_t)eq_menu_pointer);
+                    }
+                    break;
+                case PHONO_MENU_NUM:
+                    if (phono_menu_pointer < 1) phono_menu_pointer++;
+                    break;
             }
             old_menu_pointer = 255;
             break;
@@ -298,8 +355,14 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
             switch (menu_pointer) {
                 case MAIN_MENU_NUM:
                     switch (main_menu_pointer) {
-                        case 0: menu_pointer = EQ_MENU_NUM; break;
-                        case 1: menu_pointer = FILTERS_MENU_NUM; break;
+                        case 0:
+                            eq_menu_pointer = g_settings.adau_eq_preset;
+                            menu_pointer = EQ_MENU_NUM;
+                            break;
+                        case 1:
+                            filters_menu_pointer = g_settings.audio_preset;
+                            menu_pointer = FILTERS_MENU_NUM;
+                            break;
                         case 2: 
                             menu_pointer = MYSPACE_MENU_NUM; 
                             myspace_depth = 0;
@@ -307,12 +370,21 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                             myspace_param_pointer = 0;
                             break;
                         case 3: 
-                            g_settings.adau_surround_mode = !g_settings.adau_surround_mode;
-                            audio_manager_set_surround_mode(g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND);
+                            // У режимі 2.1 (Nx2-1_4 = 0, обхід Surround) статус завжди залишається MUSIC (1) і не перемикається
+                            if (g_settings.sys_mode == 0) {
+                                g_settings.adau_surround_mode = 1; // MUSIC
+                            } else {
+                                g_settings.adau_surround_mode = !g_settings.adau_surround_mode;
+                                audio_manager_set_surround_mode(g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND);
+                            }
                             old_menu_pointer = 255;
                             break;
                         case 4: 
                             g_settings.sys_mode = !g_settings.sys_mode;
+                            if (g_settings.sys_mode == 0) {
+                                // При переході в 2.1 (Nx2-1_4 = 0) примусово ставимо статус MUSIC (1)
+                                g_settings.adau_surround_mode = 1;
+                            }
                             audio_manager_set_speaker_mode(g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1);
                             old_menu_pointer = 255;
                             break;
@@ -322,6 +394,7 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 
                 case EQ_MENU_NUM:
                     g_settings.adau_eq_preset = eq_menu_pointer;
+                    audio_manager_set_eq_preset((eq_preset_id_t)eq_menu_pointer);
                     old_menu_pointer = 255;
                     break;
 
@@ -335,10 +408,11 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                 case PHONO_MENU_NUM:
                     if (is_long_press) {
                         if (phono_menu_pointer == 0) {
-                            // ERASE NEEDLE TIME
+                            phono_reset_needle_time();
                         } else if (phono_menu_pointer == 1) {
-                            // ERASE TOTAL TIME
+                            phono_reset_total_time();
                         }
+                        old_menu_pointer = 255;
                     }
                     break;
             }
@@ -348,6 +422,8 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
             if (menu_pointer == MAIN_MENU_NUM) {
                 exit_setup_menu(); // Збереження викликається тут
             } else {
+                // Якщо користувач не натиснув OK перед виходом із підменю EQ / FILTERS — повертаємо збережений пресет із крапочкою
+                restore_unconfirmed_preview();
                 menu_pointer = MAIN_MENU_NUM;
                 old_menu_pointer = 255;
             }
@@ -366,22 +442,24 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
 
     if (current_state == STATE_IDLE_CAT2 || current_state == STATE_SPECTRUM) {
         if (btn_pin == PIN_BTN_1) {
-            change_volume(1);
-        } else if (btn_pin == PIN_BTN_2) {
             change_volume(-1);
+        } else if (btn_pin == PIN_BTN_2) {
+            change_volume(1);
         } else if (btn_pin == PIN_BTN_3 && is_long_press) {
             current_state = STATE_SETUP_MENU;
             menu_pointer = MAIN_MENU_NUM;
             old_menu_pointer = 255;
             load_menu_pointers_from_ram();
             last_menu_activity_tick = xTaskGetTickCount();
+        } else if (btn_pin == PIN_BTN_3 && !is_long_press) {
+            autosearch_force_scan_from_button();
         }
     } 
     else if (current_state == STATE_VOLUME_POPUP) {
         if (btn_pin == PIN_BTN_1) {
-            change_volume(1);
-        } else if (btn_pin == PIN_BTN_2) {
             change_volume(-1);
+        } else if (btn_pin == PIN_BTN_2) {
+            change_volume(1);
         } else if (btn_pin == PIN_BTN_4) {
             current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
         }

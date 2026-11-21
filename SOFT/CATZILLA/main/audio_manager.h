@@ -26,14 +26,18 @@ typedef struct {
 typedef enum {
     LINE_MODE_STEREO     = 0,
     LINE_MODE_MONO_L_ALL = 1,
-    LINE_MODE_MONO_R_ALL = 2
+    LINE_MODE_MONO_R_ALL = 2,
+    LINE_MODE_MONO_L2R   = LINE_MODE_MONO_L_ALL,
+    LINE_MODE_MONO_R2L   = LINE_MODE_MONO_R_ALL
 } line_input_mode_t;
 
 // 3. Селектор джерела входу (Nx2-1_3)
 typedef enum {
     INPUT_SRC_ANALOG  = 0,
     INPUT_SRC_BLE     = 1,
-    INPUT_SRC_OPTICAL = 2
+    INPUT_SRC_OPTICAL = 2,
+    INPUT_SRC_LINE    = INPUT_SRC_ANALOG,
+    INPUT_SRC_TOSLINK = INPUT_SRC_OPTICAL
 } audio_input_src_t;
 
 // 5. Конфігурація акустики (Nx2-1_4 + Mute1)
@@ -77,7 +81,10 @@ esp_err_t audio_manager_set_input_source(audio_input_src_t src);                
 esp_err_t audio_manager_set_eq_preset(eq_preset_id_t preset);                   // 15-смуговий EQ (Mid Filter1)
 esp_err_t audio_manager_set_speaker_mode(speaker_mode_t mode);                  // Режим 2.1 / 5.1 (Nx2-1_4 + автоматичний Mute1 для відсікання зайвих каналів у 2.1)
 esp_err_t audio_manager_set_channel_delay(audio_channel_t ch, float delay_ms);  // Затримки каналів (меню My Space, автоматичний ліміт мс по кожному каналу)
+esp_err_t audio_manager_set_channel_distance_m(audio_channel_t ch, float dist_m); // Оновлення дистанції каналу (м) із автоматичним перерахунком компенсаційних затримок усіх 6 колонок
+esp_err_t audio_manager_update_all_distances(void);                             // Перерахунок затримок усіх 6 колонок відносно найдальшої (Варіант А: (D_max - D_i) / 343 м/с)
 esp_err_t audio_manager_set_channel_volume(audio_channel_t ch, uint8_t pct);    // Поканальні гучності 0..100% (меню My Space)
+esp_err_t audio_manager_set_channel_gain_db(audio_channel_t ch, float gain_db); // Поканальне підсилення в дБ (-12.0..+12.0 дБ, меню My Space)
 esp_err_t audio_manager_set_master_volume(uint8_t pct);                         // Master-гучність 0..100% (Single 4_2) + синхронізація з глобальним master_volume
 esp_err_t audio_manager_set_master_mute(bool mute);                             // Загальний Mute (Mute2) + синхронізація з глобальним is_muted
 esp_err_t audio_manager_set_surround_mode(surround_mode_t mode);                // ADI Surround: режим (Music/Surround) і простір (Small/Large)

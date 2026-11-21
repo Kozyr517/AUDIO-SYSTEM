@@ -141,15 +141,18 @@ esp_err_t eeprom_load_settings(app_settings_t *settings) {
         // Встановлюємо дефолтний пресет аудіо на 0 (наприклад, SILK)
         settings->audio_preset = 0;
 
-        settings->adau_main_volume = 10; // Дефолтна загальна гучність
+        settings->adau_main_volume = 50; // Дефолтна загальна гучність (50%)
         
         // Зміщення: 24 означає 0 dB (діапазон -12.0 до +12.0)
         memset(settings->adau_vol_ch, 24, sizeof(settings->adau_vol_ch)); 
-        memset(settings->adau_distances, 0, sizeof(settings->adau_distances)); // Дистанції 0
+        // Дефолтна дистанція 15 = 1.5 м для всіх 6 колонок (компенсаційна затримка = 0 мс)
+        memset(settings->adau_distances, 15, sizeof(settings->adau_distances));
         
-        settings->adau_eq_preset = 0;     // Studio Flat
-        settings->adau_surround_mode = 0; // Music Mode
+        settings->adau_eq_preset = 4;     // 4 = NATURE (Flat 0 dB)
+        settings->adau_surround_mode = 1; // 1 = MUSIC Mode
         settings->sys_mode = 1;           // 5.1 System Mode
+        settings->phono_needle_minutes = 0;
+        settings->phono_total_minutes  = 0;
 
         ret = eeprom_save_settings(settings);
         if (ret == ESP_OK) {

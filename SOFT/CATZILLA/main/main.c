@@ -22,6 +22,7 @@
 #include "screens.h" 
 #include "animation.h"
 #include "audio_manager.h"
+#include "autosearch.h"
 
 static const char *TAG = "MAIN";
 
@@ -67,8 +68,9 @@ static void power_on_peripherals(void) {
     vTaskDelay(pdMS_TO_TICKS(50)); 
 
     // Вмикаємо живлення ізольованої шини 3V3_ISO та ADAU1452 (МАЄ ЗАЛИШАТИСЯ = 1!)
+    // Реле GPIO9 за замовчуванням ставимо у 0 (VINYL)
     gpio_set_level(PIN_EN_POW_ADAU, 1);
-    gpio_set_level(PIN_GP9, 1);
+    gpio_set_level(PIN_GP9, 0);
     vTaskDelay(pdMS_TO_TICKS(100));
 
     gpio_set_level(PIN_BLE_EN, 1);
@@ -125,7 +127,9 @@ static void execute_sleep_sequence(void) {
     }
     vTaskDelay(pdMS_TO_TICKS(150)); 
 
-    ESP_LOGW(TAG, "Знеструмлення периферії...");
+    ESP_LOGW(TAG, "Збереження лічильників вінілу та знеструмлення периферії...");
+    phono_save_now();
+    settings_commit_check();
     power_off_peripherals();
 
     for (size_t i = 0; i < 4; i++) {
@@ -165,6 +169,7 @@ static void execute_sleep_sequence(void) {
     vTaskDelay(pdMS_TO_TICKS(800)); 
 
     audio_manager_init_all();
+    autosearch_init();
     
     lcd_init();
     draw_boot_animation(); 
@@ -212,6 +217,9 @@ static void ui_display_task(void *pvParameters) {
     current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
 
     while (1) {
+        if (current_state != STATE_SLEEP_SHUTDOWN) {
+            autosearch_tick_1s();
+        }
         switch (current_state) {
             case STATE_IDLE_CAT2:
                 extern volatile bool is_muted;
@@ -305,6 +313,7 @@ void app_main(void) {
     
     // Ініціалізує AKM + ADAU1452 і всередині викликає audio_manager_apply_all_settings()
     audio_manager_init_all();
+    autosearch_init();
 
     analizator_init();
     check_system_idle();

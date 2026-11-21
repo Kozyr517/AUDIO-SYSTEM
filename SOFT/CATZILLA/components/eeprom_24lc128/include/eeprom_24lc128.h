@@ -11,8 +11,8 @@
 #define EEPROM_PAGE_SIZE      64
 
 // Змінено магічне число для примусового перезапису налаштувань, 
-// оскільки ми змінили структуру (додали audio_preset)
-#define SETTINGS_MAGIC        0xCA72111D 
+// оскільки ми розширили структуру лічильниками голки
+#define SETTINGS_MAGIC        0xCA72111E 
 
 // Головна структура налаштувань (Єдине джерело правди)
 typedef struct __attribute__((packed)) {
@@ -22,14 +22,18 @@ typedef struct __attribute__((packed)) {
     uint8_t  audio_preset;          // Універсальний пресет фільтрів (для АЦП та 3-х ЦАПів)
 
     // Параметри ADAU1452 DSP
-    uint8_t  adau_main_volume;      // Загальна гучність (0-100 або 0-255)
-    uint8_t  adau_vol_ch[6];        // Масив гучності зі зміщенням: 24 = 0dB. [0]=FL, [1]=FR...
-    uint8_t  adau_distances[6];     // Дистанції до динаміків (у кроках по 10 см, 0-255 = 0-25.5м)
+    uint8_t  adau_main_volume;      // Загальна гучність (0-100)
+    uint8_t  adau_vol_ch[6];        // Масив гучності зі зміщенням: 24 = 0dB. [0]=FL, [1]=C, [2]=SUB, [3]=FR, [4]=RL, [5]=RR
+    uint8_t  adau_distances[6];     // Дистанції до динаміків (у кроках по 10 см, 0-100 = 0.0-10.0м)
     
     // Режими системи
-    uint8_t  adau_eq_preset;        // Еквалайзер (6 режимів: 0..5)
-    uint8_t  adau_surround_mode;    // Перемикач: 0 - Music, 1 - Surround
+    uint8_t  adau_eq_preset;        // Еквалайзер (6 режимів: 0..5 = POP, ROCK, JAZZ, SYMPH, NATURE, B&T)
+    uint8_t  adau_surround_mode;    // Перемикач: 0 - Surround, 1 - Music
     uint8_t  sys_mode;              // Перемикач: 0 - 2.1, 1 - 5.1
+
+    // Лічильники голки вінілового програвача (PHONO MM)
+    uint32_t phono_needle_minutes;  // Напрацювання поточної голки (у хвилинах)
+    uint32_t phono_total_minutes;   // Загальне напрацювання програвача (у хвилинах)
 
     uint8_t  crc8;                  // Контрольна сума CRC8 усіх полів вище
 } app_settings_t;

@@ -1,4 +1,5 @@
 #include "audio_manager.h"
+#include <math.h>
 #include "eeprom_24lc128.h" 
 #include "i2c_bus.h"        
 #include "ak5572.h"         
@@ -123,11 +124,37 @@ esp_err_t audio_manager_set_input_source(audio_input_src_t src) {
     return adau1452_set_slew_mux(REG_MUX_INPUT_SEL_BASE, MUX_INPUT_SEL_INPUTS, (uint8_t)src);
 }
 
-// 4. 15-смуговий EQ (Mid Filter1)
+// Допоміжні функції синхронного Mute/Unmute для Mute2 та Mute1
+static void hw_mute_both(void) {
+    adau1452_write_u32(REG_MUTE_MASTER, DSP_ZERO_8_24);
+    adau1452_write_u32(REG_MUTE_2_1_CUTOFF, DSP_ZERO_8_24);
+}
+
+static void hw_unmute_both_if_allowed(void) {
+    if (!is_muted) {
+        adau1452_write_u32(REG_MUTE_MASTER, DSP_UNITY_8_24);
+        uint32_t mute1_val = (s_dsp.speaker_mode == SPEAKER_MODE_5_1) ? DSP_UNITY_8_24 : DSP_ZERO_8_24;
+        adau1452_write_u32(REG_MUTE_2_1_CUTOFF, mute1_val);
+    }
+}
+
+// 4. 15-смуговий EQ (Mid Filter1) із плавним Mute (Mute2 + Mute1) перед записом та Unmute через 50 мс
 esp_err_t audio_manager_set_eq_preset(eq_preset_id_t preset) {
     if (preset >= EQ_PRESET_MAX) return ESP_ERR_INVALID_ARG;
     s_dsp.eq_preset = (uint8_t)preset;
-    return adau1452_apply_eq_preset(preset);
+
+    // 1. М'ютимо обидва виходи (Mute2 та Mute1) перед зміною коефіцієнтів 15 біквадів
+    hw_mute_both();
+    vTaskDelay(pdMS_TO_TICKS(10));
+
+    // 2. Записуємо новий пресет еквалайзера
+    esp_err_t ret = adau1452_apply_eq_preset(preset);
+
+    // 3. Чекаємо 50 мс і розм'ючуємо Mute2 та Mute1
+    vTaskDelay(pdMS_TO_TICKS(50));
+    hw_unmute_both_if_allowed();
+
+    return ret;
 }
 
 // 5. Режим 2.1 / 5.1 (Nx2-1_4 + автоматичний Mute1 для відсікання каналів у 2.1)
@@ -160,13 +187,67 @@ esp_err_t audio_manager_set_channel_delay(audio_channel_t ch, float delay_ms) {
     return adau1452_write_u32(k_delay_regs[ch], samples);
 }
 
-// 7. Поканальні гучності 0..100% (меню My Space)
+esp_err_t audio_manager_update_all_distances(void) {
+    float dist_m[CH_COUNT];
+    float max_dist_m = 0.0f;
+
+    // 1. Зчитуємо дистанції всіх 6 колонок (у метрах) та знаходимо найдальшу колонку D_max
+    for (int i = 0; i < CH_COUNT; i++) {
+        float d = (float)g_settings.adau_distances[i] / 10.0f;
+        if (d < 0.0f)  d = 0.0f;
+        if (d > 10.0f) d = 10.0f;
+        dist_m[i] = d;
+        if (d > max_dist_m) {
+            max_dist_m = d;
+        }
+    }
+
+    // 2. Компенсаційна затримка (Варіант А): ближчі колонки затримуються на (D_max - D_i) / 343.0 с,
+    // щоб звук від усіх 6 колонок одночасно досягав слухача.
+    esp_err_t first_err = ESP_OK;
+    for (int i = 0; i < CH_COUNT; i++) {
+        float delta_m  = max_dist_m - dist_m[i];
+        float delay_ms = (delta_m / 343.0f) * 1000.0f;
+        esp_err_t err  = audio_manager_set_channel_delay((audio_channel_t)i, delay_ms);
+        if (err != ESP_OK && first_err == ESP_OK) {
+            first_err = err;
+        }
+    }
+    return first_err;
+}
+
+esp_err_t audio_manager_set_channel_distance_m(audio_channel_t ch, float dist_m) {
+    if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
+    if (dist_m < 0.0f)  dist_m = 0.0f;
+    if (dist_m > 10.0f) dist_m = 10.0f;
+
+    g_settings.adau_distances[ch] = (uint8_t)(dist_m * 10.0f + 0.5f);
+    return audio_manager_update_all_distances();
+}
+
+// 7. Поканальні гучності 0..100% або -12..+12 дБ (меню My Space)
 esp_err_t audio_manager_set_channel_volume(audio_channel_t ch, uint8_t pct) {
     if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
     if (pct > 100) pct = 100;
 
     s_dsp.ch_vol_pct[ch] = pct;
     return adau1452_write_u32(k_vol_regs[ch], pct_to_dsp_8_24(pct));
+}
+
+esp_err_t audio_manager_set_channel_gain_db(audio_channel_t ch, float gain_db) {
+    if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
+    if (gain_db < -12.0f) gain_db = -12.0f;
+    if (gain_db >  12.0f) gain_db =  12.0f;
+
+    uint32_t val_8_24;
+    if (fabsf(gain_db) < 0.05f) {
+        val_8_24 = DSP_UNITY_8_24; // Точна одиниця (0.0 дБ = 0x01000000)
+    } else {
+        float linear = powf(10.0f, gain_db / 20.0f);
+        val_8_24 = (uint32_t)(linear * DSP_SCALE_8_24_FLOAT + 0.5f);
+    }
+
+    return adau1452_write_u32(k_vol_regs[ch], val_8_24);
 }
 
 // 8. Master-гучність 0..100% (Single 4_2)
@@ -205,28 +286,35 @@ const dsp_runtime_state_t* audio_manager_get_dsp_state(void) {
 }
 
 void audio_manager_apply_all_settings(void) {
-    if (master_volume > 100) master_volume = 60;
-    s_dsp.speaker_mode = g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1;
+    if (master_volume > 100) master_volume = 50;
+    s_dsp.speaker_mode  = g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1;
+    s_dsp.eq_preset     = (g_settings.adau_eq_preset < EQ_PRESET_MAX) ? g_settings.adau_eq_preset : EQ_PRESET_NATURE;
+    s_dsp.surround_mode = g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND;
 
-    // Активний базовий функціонал на поточний етап:
+    audio_manager_set_line_mode(s_dsp.line_mode);
     audio_manager_set_input_source(s_dsp.input_source);
     audio_manager_set_speaker_mode(s_dsp.speaker_mode);
     audio_manager_set_master_volume(master_volume);
+    adau1452_apply_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
+    audio_manager_set_surround_mode((surround_mode_t)s_dsp.surround_mode);
 
-    ESP_LOGI(TAG, "Застосовано параметри DSP: Vol=%u%%, In=%d, Mode=%s, Mute=%d",
+    audio_manager_update_all_distances();
+
+    for (int ch = 0; ch < CH_COUNT; ch++) {
+        uint8_t raw_vol = g_settings.adau_vol_ch[ch];
+        if (raw_vol > 48) raw_vol = 24; // Захист: 24 = 0.0 дБ
+        float gain_db = ((float)raw_vol / 2.0f) - 12.0f;
+
+        audio_manager_set_channel_gain_db((audio_channel_t)ch, gain_db);
+    }
+
+    ESP_LOGI(TAG, "Застосовано параметри DSP: Vol=%u%%, In=%d, Mode=%s, EQ=%u, Surr=%u, Mute=%d",
              master_volume,
              (int)s_dsp.input_source,
              (s_dsp.speaker_mode == SPEAKER_MODE_5_1) ? "5.1" : "2.1",
+             (unsigned)s_dsp.eq_preset,
+             (unsigned)s_dsp.surround_mode,
              (int)is_muted);
-
-    // <<< TODO: Розкоментувати після заповнення пресетів EQ/Surround та меню My Space:
-    // audio_manager_set_line_mode(s_dsp.line_mode);
-    // audio_manager_set_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
-    // audio_manager_set_surround_mode((surround_mode_t)s_dsp.surround_mode);
-    // for (int ch = 0; ch < CH_COUNT; ch++) {
-    //     audio_manager_set_channel_delay((audio_channel_t)ch, s_dsp.delays_ms[ch]);
-    //     audio_manager_set_channel_volume((audio_channel_t)ch, s_dsp.ch_vol_pct[ch]);
-    // }
 }
 
 // ============================================================================
@@ -271,8 +359,9 @@ void audio_manager_init_all(void) {
     // ==============================================================
     ESP_LOGI(TAG, "Підключення до DSP ADAU1452...");
     if (adau1452_init(i2c_bus_handle, ADAU1452_DSP_ADDR) == ESP_OK) {
-        adau1452_write_u32(REG_MUTE_MASTER, DSP_ZERO_8_24);
+        hw_mute_both();
         audio_manager_apply_all_settings();
+        hw_mute_both(); // Утримуємо Mute2 та Mute1 закритими до повного старту АЦП/ЦАП
     }
     
     // Чекаємо стабілізації PLL всередині DSP
@@ -292,9 +381,7 @@ void audio_manager_init_all(void) {
     ak5572_start();                                 
     ak4493_start_all();
 
-    if (!is_muted) {
-        adau1452_write_u32(REG_MUTE_MASTER, DSP_UNITY_8_24);
-    }
+    hw_unmute_both_if_allowed();
 
     ESP_LOGI(TAG, "Аудіотракт CATZILLA SYSTEM успішно запущено!");
 }

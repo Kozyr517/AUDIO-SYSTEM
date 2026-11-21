@@ -5,14 +5,16 @@
 #include "driver/i2c_master.h"
 #include "adau1452_regs.h"
 
-// Пресети 15-смугового EQ
+// Пресети 15-смугового EQ (порядок синхронізовано з menu.c -> eq_names[6])
 typedef enum {
-    EQ_PRESET_FLAT = 0,
-    EQ_PRESET_ROCK,
-    EQ_PRESET_POP,
-    EQ_PRESET_JAZZ,
-    EQ_PRESET_CUSTOM,
-    EQ_PRESET_MAX
+    EQ_PRESET_POP    = 0,
+    EQ_PRESET_ROCK   = 1,
+    EQ_PRESET_JAZZ   = 2,
+    EQ_PRESET_SYMPH  = 3,
+    EQ_PRESET_NATURE = 4, // Flat (0 dB)
+    EQ_PRESET_BNT    = 5, // Bass & Treble
+    EQ_PRESET_MAX    = 6,
+    EQ_PRESET_FLAT   = EQ_PRESET_NATURE
 } eq_preset_id_t;
 
 // ADI Surround: розмір приміщення (меню My Space)
