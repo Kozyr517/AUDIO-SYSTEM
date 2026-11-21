@@ -102,8 +102,8 @@ static void set_main_menu(void) {
 
     lcd_draw_rectangle(96, 2, 90, 18);
     
-    // Читаємо режим Spatial безпосередньо з EEPROM-структури
-    if (g_settings.adau_surround_mode == 0) {
+    // Читаємо режим Spatial: у режимі 2.1 (sys_mode == 0, Nx2-1_4 = 0) завжди відображаємо MUSIC
+    if (g_settings.sys_mode != 0 && g_settings.adau_surround_mode == 0) {
         lcd_print(spatial_names[0], 109, 7, (const uint8_t*)Sinclair_S8x8, 0);
     } else {
         lcd_print(spatial_names[1], 121, 7, (const uint8_t*)Sinclair_S8x8, 0);

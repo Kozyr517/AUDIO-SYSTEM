@@ -312,12 +312,21 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                             myspace_param_pointer = 0;
                             break;
                         case 3: 
-                            g_settings.adau_surround_mode = !g_settings.adau_surround_mode;
-                            audio_manager_set_surround_mode(g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND);
+                            // У режимі 2.1 (Nx2-1_4 = 0, обхід Surround) статус завжди залишається MUSIC (1) і не перемикається
+                            if (g_settings.sys_mode == 0) {
+                                g_settings.adau_surround_mode = 1; // MUSIC
+                            } else {
+                                g_settings.adau_surround_mode = !g_settings.adau_surround_mode;
+                                audio_manager_set_surround_mode(g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND);
+                            }
                             old_menu_pointer = 255;
                             break;
                         case 4: 
                             g_settings.sys_mode = !g_settings.sys_mode;
+                            if (g_settings.sys_mode == 0) {
+                                // При переході в 2.1 (Nx2-1_4 = 0) примусово ставимо статус MUSIC (1)
+                                g_settings.adau_surround_mode = 1;
+                            }
                             audio_manager_set_speaker_mode(g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1);
                             old_menu_pointer = 255;
                             break;
