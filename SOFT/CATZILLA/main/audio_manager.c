@@ -161,14 +161,42 @@ esp_err_t audio_manager_set_channel_delay(audio_channel_t ch, float delay_ms) {
     return adau1452_write_u32(k_delay_regs[ch], samples);
 }
 
+esp_err_t audio_manager_update_all_distances(void) {
+    float dist_m[CH_COUNT];
+    float max_dist_m = 0.0f;
+
+    // 1. Зчитуємо дистанції всіх 6 колонок (у метрах) та знаходимо найдальшу колонку D_max
+    for (int i = 0; i < CH_COUNT; i++) {
+        float d = (float)g_settings.adau_distances[i] / 10.0f;
+        if (d < 0.0f)  d = 0.0f;
+        if (d > 10.0f) d = 10.0f;
+        dist_m[i] = d;
+        if (d > max_dist_m) {
+            max_dist_m = d;
+        }
+    }
+
+    // 2. Компенсаційна затримка (Варіант А): ближчі колонки затримуються на (D_max - D_i) / 343.0 с,
+    // щоб звук від усіх 6 колонок одночасно досягав слухача.
+    esp_err_t first_err = ESP_OK;
+    for (int i = 0; i < CH_COUNT; i++) {
+        float delta_m  = max_dist_m - dist_m[i];
+        float delay_ms = (delta_m / 343.0f) * 1000.0f;
+        esp_err_t err  = audio_manager_set_channel_delay((audio_channel_t)i, delay_ms);
+        if (err != ESP_OK && first_err == ESP_OK) {
+            first_err = err;
+        }
+    }
+    return first_err;
+}
+
 esp_err_t audio_manager_set_channel_distance_m(audio_channel_t ch, float dist_m) {
     if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
-    if (dist_m < 0.0f) dist_m = 0.0f;
+    if (dist_m < 0.0f)  dist_m = 0.0f;
     if (dist_m > 10.0f) dist_m = 10.0f;
 
-    // Переведення метрів у мс затримки (швидкість звуку ~343 м/с -> 1 м ≈ 2.91545 мс)
-    float delay_ms = (dist_m / 343.0f) * 1000.0f;
-    return audio_manager_set_channel_delay(ch, delay_ms);
+    g_settings.adau_distances[ch] = (uint8_t)(dist_m * 10.0f + 0.5f);
+    return audio_manager_update_all_distances();
 }
 
 // 7. Поканальні гучності 0..100% або -12..+12 дБ (меню My Space)
@@ -244,13 +272,13 @@ void audio_manager_apply_all_settings(void) {
     audio_manager_set_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
     audio_manager_set_surround_mode((surround_mode_t)s_dsp.surround_mode);
 
+    audio_manager_update_all_distances();
+
     for (int ch = 0; ch < CH_COUNT; ch++) {
-        float dist_m = (float)g_settings.adau_distances[ch] / 10.0f;
         uint8_t raw_vol = g_settings.adau_vol_ch[ch];
         if (raw_vol > 48) raw_vol = 24; // Захист: 24 = 0.0 дБ
         float gain_db = ((float)raw_vol / 2.0f) - 12.0f;
 
-        audio_manager_set_channel_distance_m((audio_channel_t)ch, dist_m);
         audio_manager_set_channel_gain_db((audio_channel_t)ch, gain_db);
     }
 
