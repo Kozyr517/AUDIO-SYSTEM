@@ -442,9 +442,9 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
 
     if (current_state == STATE_IDLE_CAT2 || current_state == STATE_SPECTRUM) {
         if (btn_pin == PIN_BTN_1) {
-            change_volume(1);
-        } else if (btn_pin == PIN_BTN_2) {
             change_volume(-1);
+        } else if (btn_pin == PIN_BTN_2) {
+            change_volume(1);
         } else if (btn_pin == PIN_BTN_3 && is_long_press) {
             current_state = STATE_SETUP_MENU;
             menu_pointer = MAIN_MENU_NUM;
@@ -457,9 +457,9 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
     } 
     else if (current_state == STATE_VOLUME_POPUP) {
         if (btn_pin == PIN_BTN_1) {
-            change_volume(1);
-        } else if (btn_pin == PIN_BTN_2) {
             change_volume(-1);
+        } else if (btn_pin == PIN_BTN_2) {
+            change_volume(1);
         } else if (btn_pin == PIN_BTN_4) {
             current_state = (is_input_sig_flag == 1) ? STATE_SPECTRUM : STATE_IDLE_CAT2;
         }
