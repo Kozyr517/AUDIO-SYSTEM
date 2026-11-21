@@ -16,6 +16,7 @@
 #include "buttons.h"
 #include "eeprom_24lc128.h" 
 #include "audio_manager.h"
+#include "autosearch.h"
 
 #define MYSPACE_TARGET_COUNT 12
 float myspace_values[MYSPACE_TARGET_COUNT] = {
@@ -197,6 +198,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     myspace_values[myspace_speaker_pointer] = roundf(myspace_values[myspace_speaker_pointer] * 10.0f) / 10.0f;
                     
                     g_settings.adau_distances[myspace_speaker_pointer] = (uint8_t)(myspace_values[myspace_speaker_pointer] * 10.0f);
+                    audio_manager_set_channel_distance_m((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer]);
                 } else { // Гучність (GAIN)
                     myspace_values[myspace_speaker_pointer + 6] += 0.50f;
                     if (myspace_values[myspace_speaker_pointer + 6] > 12.0f) {
@@ -206,6 +208,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     
                     // Збереження зі зміщенням у uint8_t: (val + 12.0) * 2
                     g_settings.adau_vol_ch[myspace_speaker_pointer] = (uint8_t)((myspace_values[myspace_speaker_pointer + 6] + 12.0f) * 2.0f);
+                    audio_manager_set_channel_gain_db((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer + 6]);
                 }
             } else if (myspace_depth == 1) {
                 myspace_param_pointer = 1;
@@ -224,6 +227,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     myspace_values[myspace_speaker_pointer] = roundf(myspace_values[myspace_speaker_pointer] * 10.0f) / 10.0f;
                     
                     g_settings.adau_distances[myspace_speaker_pointer] = (uint8_t)(myspace_values[myspace_speaker_pointer] * 10.0f);
+                    audio_manager_set_channel_distance_m((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer]);
                 } else { // Гучність (GAIN)
                     myspace_values[myspace_speaker_pointer + 6] -= 0.50f;
                     if (myspace_values[myspace_speaker_pointer + 6] < -12.0f) {
@@ -233,6 +237,7 @@ static void process_myspace_buttons(uint32_t butt_num) {
                     
                     // Збереження зі зміщенням у uint8_t: (val + 12.0) * 2
                     g_settings.adau_vol_ch[myspace_speaker_pointer] = (uint8_t)((myspace_values[myspace_speaker_pointer + 6] + 12.0f) * 2.0f);
+                    audio_manager_set_channel_gain_db((audio_channel_t)myspace_speaker_pointer, myspace_values[myspace_speaker_pointer + 6]);
                 }
             } else if (myspace_depth == 1) {
                 myspace_param_pointer = 0;
@@ -322,6 +327,7 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
 
                 case EQ_MENU_NUM:
                     g_settings.adau_eq_preset = eq_menu_pointer;
+                    audio_manager_set_eq_preset((eq_preset_id_t)eq_menu_pointer);
                     old_menu_pointer = 255;
                     break;
 
@@ -335,10 +341,11 @@ void buttons_in_menu_process(uint32_t butt_num, bool is_long_press) {
                 case PHONO_MENU_NUM:
                     if (is_long_press) {
                         if (phono_menu_pointer == 0) {
-                            // ERASE NEEDLE TIME
+                            phono_reset_needle_time();
                         } else if (phono_menu_pointer == 1) {
-                            // ERASE TOTAL TIME
+                            phono_reset_total_time();
                         }
+                        old_menu_pointer = 255;
                     }
                     break;
             }
@@ -375,6 +382,8 @@ void handle_button_event(uint32_t btn_pin, bool is_long_press) {
             old_menu_pointer = 255;
             load_menu_pointers_from_ram();
             last_menu_activity_tick = xTaskGetTickCount();
+        } else if (btn_pin == PIN_BTN_3 && !is_long_press) {
+            autosearch_force_scan_from_button();
         }
     } 
     else if (current_state == STATE_VOLUME_POPUP) {

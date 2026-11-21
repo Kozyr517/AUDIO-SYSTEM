@@ -7,5 +7,6 @@ idf_component_register(SRCS "main.c"
                             "i2c_bus.c"
                             "screens.c"
                             "audio_manager.c"
+                            "autosearch.c"
                        INCLUDE_DIRS "."
                        REQUIRES driver esp_adc led_strip GP1247AI ds18b20 animation espressif__esp-dsp esp_timer eeprom_24lc128 ak4493_dac ak5572_adc adau1452_dsp)

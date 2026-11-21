@@ -9,6 +9,7 @@
 #include "esp_timer.h"
 #include "esp_log.h"
 #include "eeprom_24lc128.h" // Підключення глобальної структури налаштувань
+#include "autosearch.h"
 
 // Глобальний об'єкт дисплея з lcd.c
 extern TypeDef_GP1247AI lcd;
@@ -385,16 +386,21 @@ static void set_myspace_menu(void) {
 
 static void set_phono_menu(void) {
     lcd_clear();
+    char needle_str[20];
+    char total_str[20];
+    phono_get_needle_time_str(needle_str, sizeof(needle_str));
+    phono_get_total_time_str(total_str, sizeof(total_str));
+
     switch (phono_menu_pointer) {
         case 0: lcd_draw_rectangle(1, 16, 152, 15); break;
         case 1: lcd_draw_rectangle(1, 46, 152, 15); break;
     }
     lcd_draw_rectangle(2, 2, 150, 13);
-    lcd_print("000.015h30m", 42, 4, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print(needle_str, 42, 4, (const uint8_t*)Sinclair_S8x8, 0);
     lcd_draw_rectangle(2, 17, 150, 13);
     lcd_print("ERASE NEEDLE TIME", 10, 19, (const uint8_t*)Sinclair_S8x8, 0);
     lcd_draw_rectangle(2, 32, 150, 13);
-    lcd_print("000.100h10m", 42, 34, (const uint8_t*)Sinclair_S8x8, 0);
+    lcd_print(total_str, 42, 34, (const uint8_t*)Sinclair_S8x8, 0);
     lcd_draw_rectangle(2, 47, 150, 13);
     lcd_print("ERASE TOTAL TIME", 14, 49, (const uint8_t*)Sinclair_S8x8, 0);
 
@@ -407,7 +413,14 @@ static void set_phono_menu(void) {
 
 void menu_update(void) {
     static int64_t last_anim_time = 0;
+    static autosearch_state_t old_as_state = (autosearch_state_t)255;
+    static audio_input_src_t  old_as_mux2  = (audio_input_src_t)255;
+    static uint8_t            old_as_gpio  = 255;
     int64_t now = esp_timer_get_time() / 1000;
+
+    autosearch_state_t cur_as_state = autosearch_get_state();
+    audio_input_src_t  cur_as_mux2  = autosearch_get_active_source();
+    uint8_t            cur_as_gpio  = autosearch_get_relay_gpio();
 
     bool menu_changed = (menu_pointer != old_menu_pointer || 
                          main_menu_pointer != old_main_menu_pointer ||
@@ -417,7 +430,10 @@ void menu_update(void) {
                          is_muted != old_is_muted ||
                          myspace_speaker_pointer != old_myspace_speaker_pointer ||
                          myspace_param_pointer != old_myspace_param_pointer ||
-                         myspace_depth != old_myspace_depth); 
+                         myspace_depth != old_myspace_depth ||
+                         cur_as_state != old_as_state ||
+                         cur_as_mux2 != old_as_mux2 ||
+                         cur_as_gpio != old_as_gpio); 
 
     if (menu_changed || (now - last_anim_time >= 100)) {
         last_anim_time = now;
@@ -431,6 +447,9 @@ void menu_update(void) {
         old_myspace_speaker_pointer = myspace_speaker_pointer;
         old_myspace_param_pointer = myspace_param_pointer;
         old_myspace_depth = myspace_depth;
+        old_as_state = cur_as_state;
+        old_as_mux2  = cur_as_mux2;
+        old_as_gpio  = cur_as_gpio;
 
         switch (menu_pointer) {
             case MAIN_MENU_NUM:    set_main_menu(); break;

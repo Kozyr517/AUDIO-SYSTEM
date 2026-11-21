@@ -18,36 +18,43 @@ static const uint16_t k_eq_band_addrs[EQ_BANDS_COUNT] = {
 };
 
 static const uint32_t eq_presets_table[EQ_PRESET_MAX][EQ_BANDS_COUNT][BIQUAD_WORDS_PER_BAND] = {
-    [EQ_PRESET_FLAT] = {
-        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
-        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
-        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
-    },
-
-    // <<< TODO [EQ_PRESET_ROCK]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
-    //     зі SigmaStudio (Capture Window або експорт Param_Data для пресета Rock)
-    [EQ_PRESET_ROCK] = {
-        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
-        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
-        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
-    },
-
-    // <<< TODO [EQ_PRESET_POP]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
+    // <<< TODO [0: EQ_PRESET_POP]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1} зі SigmaStudio
     [EQ_PRESET_POP] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
     },
 
-    // <<< TODO [EQ_PRESET_JAZZ]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
+    // <<< TODO [1: EQ_PRESET_ROCK]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1} зі SigmaStudio
+    [EQ_PRESET_ROCK] = {
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
+    },
+
+    // <<< TODO [2: EQ_PRESET_JAZZ]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1} зі SigmaStudio
     [EQ_PRESET_JAZZ] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
     },
 
-    // <<< TODO [EQ_PRESET_CUSTOM]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1}
-    [EQ_PRESET_CUSTOM] = {
+    // <<< TODO [3: EQ_PRESET_SYMPH]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1} зі SigmaStudio
+    [EQ_PRESET_SYMPH] = {
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
+    },
+
+    // [4: EQ_PRESET_NATURE] — Плоска АЧХ (Flat 0 dB)
+    [EQ_PRESET_NATURE] = {
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
+        FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
+    },
+
+    // <<< TODO [5: EQ_PRESET_BNT]: Вставити 15 рядків по 5 HEX-слів {B2, B1, B0, A2, A1} зі SigmaStudio
+    [EQ_PRESET_BNT] = {
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD,
         FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD, FLAT_BIQUAD
@@ -120,13 +127,14 @@ static const uint32_t surround_presets_table[2][2][SURROUND_PARAMS_COUNT] = {
 esp_err_t adau1452_apply_eq_preset(eq_preset_id_t preset) {
     if (preset >= EQ_PRESET_MAX) return ESP_ERR_INVALID_ARG;
 
+    // Mid Filter1 (EQS300MultiDPHWSlew) має власний апаратний Slew (SLEWMODE = 0x208A)
+    // і цільові регістри TARGB2.. у банках DM0 (парні смуги) та DM1 (непарні смуги)
     for (uint8_t band = 0; band < EQ_BANDS_COUNT; band++) {
-        esp_err_t ret = adau1452_safeload_write(
-            k_eq_band_addrs[band],
-            eq_presets_table[preset][band],
-            BIQUAD_WORDS_PER_BAND
-        );
-        if (ret != ESP_OK) return ret;
+        uint16_t base = k_eq_band_addrs[band];
+        for (uint8_t w = 0; w < BIQUAD_WORDS_PER_BAND; w++) {
+            esp_err_t ret = adau1452_write_u32(base + w, eq_presets_table[preset][band][w]);
+            if (ret != ESP_OK) return ret;
+        }
     }
     return ESP_OK;
 }

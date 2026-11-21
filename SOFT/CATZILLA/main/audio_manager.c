@@ -1,4 +1,5 @@
 #include "audio_manager.h"
+#include <math.h>
 #include "eeprom_24lc128.h" 
 #include "i2c_bus.h"        
 #include "ak5572.h"         
@@ -160,13 +161,39 @@ esp_err_t audio_manager_set_channel_delay(audio_channel_t ch, float delay_ms) {
     return adau1452_write_u32(k_delay_regs[ch], samples);
 }
 
-// 7. Поканальні гучності 0..100% (меню My Space)
+esp_err_t audio_manager_set_channel_distance_m(audio_channel_t ch, float dist_m) {
+    if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
+    if (dist_m < 0.0f) dist_m = 0.0f;
+    if (dist_m > 10.0f) dist_m = 10.0f;
+
+    // Переведення метрів у мс затримки (швидкість звуку ~343 м/с -> 1 м ≈ 2.91545 мс)
+    float delay_ms = (dist_m / 343.0f) * 1000.0f;
+    return audio_manager_set_channel_delay(ch, delay_ms);
+}
+
+// 7. Поканальні гучності 0..100% або -12..+12 дБ (меню My Space)
 esp_err_t audio_manager_set_channel_volume(audio_channel_t ch, uint8_t pct) {
     if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
     if (pct > 100) pct = 100;
 
     s_dsp.ch_vol_pct[ch] = pct;
     return adau1452_write_u32(k_vol_regs[ch], pct_to_dsp_8_24(pct));
+}
+
+esp_err_t audio_manager_set_channel_gain_db(audio_channel_t ch, float gain_db) {
+    if (ch >= CH_COUNT) return ESP_ERR_INVALID_ARG;
+    if (gain_db < -12.0f) gain_db = -12.0f;
+    if (gain_db >  12.0f) gain_db =  12.0f;
+
+    uint32_t val_8_24;
+    if (fabsf(gain_db) < 0.05f) {
+        val_8_24 = DSP_UNITY_8_24; // Точна одиниця (0.0 дБ = 0x01000000)
+    } else {
+        float linear = powf(10.0f, gain_db / 20.0f);
+        val_8_24 = (uint32_t)(linear * DSP_SCALE_8_24_FLOAT + 0.5f);
+    }
+
+    return adau1452_write_u32(k_vol_regs[ch], val_8_24);
 }
 
 // 8. Master-гучність 0..100% (Single 4_2)
@@ -205,28 +232,35 @@ const dsp_runtime_state_t* audio_manager_get_dsp_state(void) {
 }
 
 void audio_manager_apply_all_settings(void) {
-    if (master_volume > 100) master_volume = 60;
-    s_dsp.speaker_mode = g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1;
+    if (master_volume > 100) master_volume = 50;
+    s_dsp.speaker_mode  = g_settings.sys_mode ? SPEAKER_MODE_5_1 : SPEAKER_MODE_2_1;
+    s_dsp.eq_preset     = (g_settings.adau_eq_preset < EQ_PRESET_MAX) ? g_settings.adau_eq_preset : EQ_PRESET_NATURE;
+    s_dsp.surround_mode = g_settings.adau_surround_mode ? SURROUND_MODE_MUSIC : SURROUND_MODE_SURROUND;
 
-    // Активний базовий функціонал на поточний етап:
+    audio_manager_set_line_mode(s_dsp.line_mode);
     audio_manager_set_input_source(s_dsp.input_source);
     audio_manager_set_speaker_mode(s_dsp.speaker_mode);
     audio_manager_set_master_volume(master_volume);
+    audio_manager_set_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
+    audio_manager_set_surround_mode((surround_mode_t)s_dsp.surround_mode);
 
-    ESP_LOGI(TAG, "Застосовано параметри DSP: Vol=%u%%, In=%d, Mode=%s, Mute=%d",
+    for (int ch = 0; ch < CH_COUNT; ch++) {
+        float dist_m = (float)g_settings.adau_distances[ch] / 10.0f;
+        uint8_t raw_vol = g_settings.adau_vol_ch[ch];
+        if (raw_vol > 48) raw_vol = 24; // Захист: 24 = 0.0 дБ
+        float gain_db = ((float)raw_vol / 2.0f) - 12.0f;
+
+        audio_manager_set_channel_distance_m((audio_channel_t)ch, dist_m);
+        audio_manager_set_channel_gain_db((audio_channel_t)ch, gain_db);
+    }
+
+    ESP_LOGI(TAG, "Застосовано параметри DSP: Vol=%u%%, In=%d, Mode=%s, EQ=%u, Surr=%u, Mute=%d",
              master_volume,
              (int)s_dsp.input_source,
              (s_dsp.speaker_mode == SPEAKER_MODE_5_1) ? "5.1" : "2.1",
+             (unsigned)s_dsp.eq_preset,
+             (unsigned)s_dsp.surround_mode,
              (int)is_muted);
-
-    // <<< TODO: Розкоментувати після заповнення пресетів EQ/Surround та меню My Space:
-    // audio_manager_set_line_mode(s_dsp.line_mode);
-    // audio_manager_set_eq_preset((eq_preset_id_t)s_dsp.eq_preset);
-    // audio_manager_set_surround_mode((surround_mode_t)s_dsp.surround_mode);
-    // for (int ch = 0; ch < CH_COUNT; ch++) {
-    //     audio_manager_set_channel_delay((audio_channel_t)ch, s_dsp.delays_ms[ch]);
-    //     audio_manager_set_channel_volume((audio_channel_t)ch, s_dsp.ch_vol_pct[ch]);
-    // }
 }
 
 // ============================================================================
